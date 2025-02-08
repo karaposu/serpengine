@@ -1,0 +1,36 @@
+main:
+
+  - name: "semantic_filter_text"
+    statement_suffix: "Here is"
+    placeholder_proclamation: semantic text prompt for filtering below text
+    placeholder: "semantic_filter_text"
+
+  - name: "semantic_filtering_task_desc"
+    info: > 
+       i want you to use given semantic text prompt to filte brelow text 
+
+  - name: "text_to_be_filtered"
+    statement_suffix: "Here is"
+    placeholder_proclamation: text_to_be_filtered
+    placeholder: "text_to_be_filtered"
+   
+  
+  - name: "formatting"
+    info: > 
+      give the output in pure answer format wihtout any introduction
+
+
+
+  """
+   Here is semantic text prompt for filtering below text {semantic_text}
+
+   here is text to be filtered {text_to_be_filtered}
+
+   i want you to use given semantic text prompt to filter given text 
+
+  give the output in pure answer format wihtout any introduction
+
+  """
+   
+
+
