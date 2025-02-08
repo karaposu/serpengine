@@ -5,7 +5,7 @@ import os
 
 
 setup(
-    name='link_finder_engine',  # Package name
+    name='serpengine',  # Package name
     version='0.0.1',  # Version of your package
     author='Enes Kuzucu',  # Your name
     
@@ -14,7 +14,7 @@ setup(
     long_description_content_type='text/markdown',  # Type of the long description
 
     packages=find_packages(),  # Automatically find packages in the directory
-    install_requires=[ 'python-dotenv' , 'requests'],
+    install_requires=[ 'python-dotenv' , 'requests', 'myllmservice', ],
     classifiers=[
         'Development Status :: 3 - Alpha',  # Development status
         'Intended Audience :: Developers',
