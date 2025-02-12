@@ -14,7 +14,7 @@ setup(
     long_description_content_type='text/markdown',  # Type of the long description
 
     packages=find_packages(),  # Automatically find packages in the directory
-    install_requires=[ 'python-dotenv' , 'requests', 'myllmservice', ],
+    install_requires=[ 'python-dotenv' , 'requests', 'myllmservice', 'beautifulsoup4'],
     classifiers=[
         'Development Status :: 3 - Alpha',  # Development status
         'Intended Audience :: Developers',

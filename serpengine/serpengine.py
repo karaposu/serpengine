@@ -1,5 +1,4 @@
-#here is link_finder_engine.py
-
+#here is serpengine.py
 
 import logging
 logging.basicConfig(level=logging.DEBUG)
@@ -35,13 +34,26 @@ logging.basicConfig(level=logging.INFO)
 
 
 google_search_api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
+# GOOGLE_SEARCH_API_KEY
 cse_id = os.getenv("GOOGLE_CSE_ID")
-
 
 
 
 class SERPEngine:
     def __init__(self):
+
+        if not google_search_api_key:
+            raise ValueError(
+                "Missing environment variable 'GOOGLE_SEARCH_API_KEY'. "
+                "Please set it in your .env or system environment."
+            )
+        
+        if not cse_id:
+            raise ValueError(
+                "Missing environment variable 'GOOGLE_CSE_ID'. "
+                "Please set it in your .env or system environment."
+            )
+        
         self.google_api_key = google_search_api_key
         self.google_cse_id = cse_id
         # self.logger = logging.getLogger(self.__class__.__name__)
@@ -183,10 +195,9 @@ class SERPEngine:
         return [LinkSearch(link=link, title="", metadata="") for link in api_links]
 
     def _fetch_links_from_scrape(self, query: str, num_urls: int) -> List[LinkSearch]:
-        """
-        Scrapes Google HTML results, converting them into LinkSearch objects.
-        """
+  
         scraped_links = self.searcher.search(query)
+     
         scraped_links = scraped_links[:num_urls]  # Limit to num_urls
         return [LinkSearch(link=link, title="", metadata="") for link in scraped_links]
 
@@ -319,16 +330,13 @@ class SERPEngine:
 
 if __name__ == "__main__":
     serp_engine = SERPEngine()
-    
-    
+
     result_data = serp_engine.collect(
         query="best food in USA",
         num_urls=5,
-        search_sources=["google_search_via_api", "google_search_via_request_module"],
-        regex_based_link_validation=False,             # New parameter
-        allow_links_forwarding_to_files=False,        # New parameter
-        # keyword_match_based_link_validation=["example", "query"],  # New parameter
-        # allowed_domains=["example.com"],              # Old param usage
+        search_sources=["google_search_via_api"],
+        regex_based_link_validation=False,             
+        allow_links_forwarding_to_files=False,        
         output_format="json"  # or "linksearch"
     )
-    # print(result_data)
+    print(result_data)

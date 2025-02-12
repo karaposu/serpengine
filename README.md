@@ -1,9 +1,10 @@
 # SERPEngine 
 
-**SERPEngine** Production grade search module to find links through search websites. 
+**SERPEngine** Production grade search module to find links through search engines. 
 - uses google search API
 - made for production.  You need API keys
 - includes various filters including LLM based one. So you can filter the links based on domain, metadata, 
+
 
 
 ## Installation
@@ -14,43 +15,65 @@
     pip install serpengine [repo]
     ```
 
-2. **Activate Your Project Environment:**
- 
-    Ensure you have your Python environment activated (e.g., using `venv`, `virtualenv`, or `conda`).
+2. Usage: 
 
-3. **Navigate to the Link Search Agent Folder and Install:**
-
-    ```bash
-    cd link_search_agent
-    pip install -e .
-    ```
-
-    This installs the package in editable mode, allowing you to make changes to the source code that are immediately reflected.
-
-## Usage
-
-Using the **Link Search Agent** is straightforward. Simply initialize the `RelevantLinkSearcher` and call the `collect` method with your desired query and parameters.
-
-### Example
 
 ```python
-from relevant_link_searcher import RelevantLinkSearcher
+from serpengine import SERPEngine
 
 # Initialize the searcher
-link_searcher = LinkSearchAgent()
+serpengine = SERPEngine()
 
-# Collect links based on a query
-result_data = link_searcher.collect(
-    query="STM32 Microprocessor",
-    num_urls=5,
-    search_sources=["google_search_via_api", "google_search_via_request_module"],
-    keyword_match_based_link_validation=["STM32"],
-    allowed_domains=["digikey.com"],
-    output_format="json"  # or "linksearch"
-)
-
-print(result_data)
+    result_data = serpengine.collect(
+        query="best food in USA",
+        num_urls=5,
+        search_sources=["google_search_via_api"],
+        regex_based_link_validation=False,             
+        allow_links_forwarding_to_files=False,        
+        output_format="json"  # or "linksearch"
+    )
+    print(result_data)
 ```
+
+
+## Getting Google Credentials:
+
+Create or Select a Google Cloud Project:
+Go to the Google Cloud Console.
+Create a new project (or select an existing one).
+Enable the Custom Search API:
+
+In the Cloud Console, navigate to APIs & Services > Library.
+Search for "Custom Search API".
+Click on it and then press the "Enable" button.
+Create Credentials (API Key):
+
+Once the API is enabled, go to APIs & Services > Credentials in the sidebar.
+Click "Create Credentials" and choose "API key".
+A dialog will display your new API key. Copy this key.
+
+Getting the Custom Search Engine ID (GOOGLE_CSE_ID)
+This ID tells the API which search engine configuration to use.
+
+Visit the Google Custom Search Engine (CSE) Site:
+
+Go to Google Custom Search Engine.
+Create a Custom Search Engine:
+
+Click "Add" or "New Search Engine".
+In the "Sites to search" field, you can either enter a specific website (if you want to restrict the search) or enter a placeholder like *.com to allow broader searches.
+Fill in the other required fields (like a name for your search engine) and click "Create".
+Retrieve Your CSE ID:
+
+Once your search engine is created, go to its Control Panel.
+
+Look for the "Search engine ID" (often labeled as cx). It will be a string of characters.
+
+Copy this ID.
+
+
+
+
 
 ### Parameters
 
