@@ -6,15 +6,15 @@ import os
 
 setup(
     name='serpengine',  # Package name
-    version='0.0.3',  # Version of your package
+    version='0.0.4',  # Version of your package
     author='Enes Kuzucu',  # Your name
     
     description='A module to find links through various search engines',  # Short description
     long_description=open('README.md').read(),  # Long description from a README file
     long_description_content_type='text/markdown',  # Type of the long description
-
+    
     packages=find_packages(),  # Automatically find packages in the directory
-    install_requires=[ 'python-dotenv' , 'requests', 'myllmservice', 'beautifulsoup4'],
+    install_requires=[ 'python-dotenv' , 'requests', 'llmservice', 'beautifulsoup4'],
     classifiers=[
         'Development Status :: 3 - Alpha',  # Development status
         'Intended Audience :: Developers',
