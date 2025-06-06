@@ -34,25 +34,34 @@ logging.basicConfig(level=logging.INFO)
 
 
 google_search_api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
-# GOOGLE_SEARCH_API_KEY
 cse_id = os.getenv("GOOGLE_CSE_ID")
 
 
 
 class SERPEngine:
-    def __init__(self):
+    def __init__(self, GOOGLE_SEARCH_API_KEY=None, GOOGLE_CSE_ID=None):
+        if not GOOGLE_SEARCH_API_KEY:
+            if not google_search_api_key:
+                raise ValueError(
+                    "Missing environment variable 'GOOGLE_SEARCH_API_KEY'. "
+                    "Please set it in your .env or system environment."
+                )
+            else:
+                self.google_api_key = google_search_api_key
+        else:
+            self.google_api_key = GOOGLE_SEARCH_API_KEY
 
-        if not google_search_api_key:
-            raise ValueError(
-                "Missing environment variable 'GOOGLE_SEARCH_API_KEY'. "
-                "Please set it in your .env or system environment."
-            )
-        
-        if not cse_id:
-            raise ValueError(
-                "Missing environment variable 'GOOGLE_CSE_ID'. "
-                "Please set it in your .env or system environment."
-            )
+
+        if  not GOOGLE_CSE_ID:
+            if not cse_id:
+                raise ValueError(
+                    "Missing environment variable 'GOOGLE_CSE_ID'. "
+                    "Please set it in your .env or system environment."
+                )
+            else:
+                 self.google_cse_id = cse_id
+        else:
+            self.google_cse_id = GOOGLE_CSE_ID
         
         self.google_api_key = google_search_api_key
         self.google_cse_id = cse_id
