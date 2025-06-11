@@ -1,16 +1,18 @@
-# here is google_searcher.py
+# serpengine/google_searcher.py
 
+# to run python -m serpengine.google_searcher
 import os
 import logging
+import time
 import requests
 from bs4 import BeautifulSoup
 from typing import List
 
-from .utils import parse_tld  # Adjust if needed or remove if you're not using parse_tld
+from .utils import parse_tld  # adjust or remove if unused
 from dotenv import load_dotenv
+from .schemes import SearchHit, UsageInfo, SERPMethodOp
 
 load_dotenv()
-
 logger = logging.getLogger(__name__)
 
 google_search_api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
@@ -31,141 +33,155 @@ class GoogleSearcher:
         self.headers = {"User-Agent": user_agent}
 
     def is_link_format_valid(self, link: str) -> bool:
-        """
-        Basic check for valid link formatting.
-        For example, confirm it starts with http:// or https://, or is not empty.
-        """
         if not link:
             return False
         return link.startswith("http")
 
     def is_link_leads_to_a_website(self, link: str) -> bool:
-        """
-        Check if the link is likely leading to a standard web page (HTML),
-        not a file or something else.
-        """
-        excluded_extensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.zip']
+        excluded_extensions = ['.pdf', '.doc', '.docx', '.ppt', 
+                               '.pptx', '.xls', '.xlsx', '.zip']
         lower_link = link.lower()
         return not any(lower_link.endswith(ext) for ext in excluded_extensions)
 
-    def is_link_leads_to_a_file(self, link: str) -> bool:
-        """
-        Check if the link points to a direct file download (e.g., PDF, ZIP, etc.)
-        """
-        file_extensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.xls', '.xlsx', '.zip']
-        lower_link = link.lower()
-        return any(lower_link.endswith(ext) for ext in file_extensions)
-    
-
     def is_blocked_page(self, response_text: str) -> bool:
-        """
-        Heuristically checks if this is likely a Google block/captcha page.
-        """
         text_lower = response_text.lower()
-
         block_signals = [
-            "unusual traffic",
-            "/sorry/",                   # often in an English captcha URL
-            "detected suspicious activity",
-            "captcha",
-            "enablejs?sei=",            # seen in your snippet
-            "birkaç saniye içinde",     # Turkish text
+            "unusual traffic", "/sorry/", "detected suspicious activity",
+            "captcha", "enablejs?sei=", "birkaç saniye içinde",
             "httpservice/retry/enablejs"
         ]
         return any(signal in text_lower for signal in block_signals)
 
-
-    def search(self, query: str) -> List[str]:
+    def search(self, query: str) -> SERPMethodOp:
         """
         Scrape Google HTML results.
-        Returns a list of valid links (by default).
+        Returns a SERPMethodOp with:
+          - name="scrape"
+          - results: List[SearchHit]
+          - usage.cost=0.0
+          - elapsed_time
         """
+        start = time.time()
         search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
         logger.debug(f"[Scraper] Sending GET request to: {search_url}")
         response = requests.get(search_url, headers=self.headers, allow_redirects=True)
 
-        logger.debug(f"[Scraper] Response status code: {response.status_code}")
-        logger.debug(f"[Scraper] Final response URL: {response.url}")
-
-        # Log snippet of the response to see if it's a captcha page
-        response_snippet = response.text[:500].replace('\n', ' ')
-
-        blocked_page=self.is_blocked_page(response_snippet)
-        logger.debug(f" response_snippet: {response_snippet}")
-        logger.debug(f"is blocked_page: {blocked_page}")
-        if blocked_page:
-           logger.debug(f"[Scraper] blocked_page")
-        
+        snippet = response.text[:500].replace('\n', ' ')
+        if self.is_blocked_page(snippet):
+            logger.debug("[Scraper] blocked_page detected")
 
         if response.status_code != 200:
-            logger.info(f'[Scraper] Google HTML search failed. status code: {response.status_code}')
-            return []
+            logger.info(f"[Scraper] HTML search failed (status {response.status_code})")
+            elapsed = time.time() - start
+            return SERPMethodOp(
+                name="scrape",
+                results=[],
+                usage=UsageInfo(cost=0.0),
+                elapsed_time=elapsed
+            )
 
-        # If we get 200, we parse the HTML
         soup = BeautifulSoup(response.text, 'html.parser')
-        search_divs = soup.find_all('div', class_='tF2Cxc')
-        logger.debug(f"[Scraper] Found {len(search_divs)} 'tF2Cxc' divs (search results).")
+        divs = soup.find_all('div', class_='tF2Cxc')
+        if not divs:
+            logger.debug("[Scraper] no standard results found")
+            elapsed = time.time() - start
+            return SERPMethodOp(
+                name="scrape",
+                results=[],
+                usage=UsageInfo(cost=0.0),
+                elapsed_time=elapsed
+            )
 
-        if not search_divs:
-            # Possibly a captcha or "unusual traffic" page even though code = 200
-            logger.debug("[Scraper] No standard search results found. Possibly blocked or captcha.")
-            return []
+        valid_links: List[str] = []
+        for g in divs:
+            a = g.find('a')
+            if a and a.get('href'):
+                href = a['href']
+                if self.is_link_format_valid(href) and self.is_link_leads_to_a_website(href):
+                    valid_links.append(href)
 
-        links: List[str] = []
-        for g in search_divs:
-            anchor = g.find('a')
-            if not anchor or not anchor.get('href'):
-                continue
-            raw_link = anchor['href']
-            if self.is_link_format_valid(raw_link) and self.is_link_leads_to_a_website(raw_link):
-                links.append(raw_link)
+        hits = [SearchHit(link=lnk, metadata="", title="") for lnk in valid_links]
+        elapsed = time.time() - start
+        logger.info(f"[Scraper] Returning {len(hits)} hits in {elapsed:.2f}s")
 
-        logger.debug(f"[Scraper] Raw extracted links: {links}")
-        logger.info(f"[Scraper] Returning {len(links)} link(s) from HTML search.")
-        return links
+        return SERPMethodOp(
+            name="scrape",
+            results=hits,
+            usage=UsageInfo(cost=0.0),
+            elapsed_time=elapsed
+        )
 
-    def search_with_api(self,
-                        query: str,
-                        num_results: int,
-                        google_search_api_key=google_search_api_key,
-                        cse_id=cse_id) -> List[str]:
+    def search_with_api(
+        self,
+        query: str,
+        num_results: int,
+        google_search_api_key=google_search_api_key,
+        cse_id=cse_id
+    ) -> SERPMethodOp:
         """
-        Use Google Custom Search API to get search results.
-        Returns a list of valid links that appear to be websites.
+        Use Google Custom Search API.
+        Returns a SERPMethodOp with:
+          - name="api"
+          - results: List[SearchHit]
+          - usage.cost=0.0  (update later if you compute actual cost)
+          - elapsed_time
         """
-        logger.debug(f"[API] Searching with query='{query}', num_results={num_results}")
-        search_url = "https://www.googleapis.com/customsearch/v1"
-        results = []
-        start_index = 1
+        start = time.time()
+        logger.debug(f"[API] query='{query}', num_results={num_results}")
+        url = "https://www.googleapis.com/customsearch/v1"
+        items = []
+        idx = 1
 
-        while len(results) < num_results:
+        while len(items) < num_results:
             params = {
                 'q': query,
                 'key': google_search_api_key,
                 'cx': cse_id,
-                'num': min(10, num_results - len(results)),
-                'start': start_index
+                'num': min(10, num_results - len(items)),
+                'start': idx
             }
-            logger.debug(f"[API] GET {search_url} with params={params}")
-            response = requests.get(search_url, params=params)
-            response_data = response.json()
-            logger.debug(f"[API] Response data keys: {list(response_data.keys())}")
+            logger.debug(f"[API] GET {url} params={params}")
+            resp = requests.get(url, params=params)
+            data = resp.json()
 
-            if 'items' in response_data:
-                results.extend(response_data['items'])
-                logger.debug(f"[API] Fetched {len(response_data['items'])} items, total so far: {len(results)}")
+            if 'items' in data:
+                items.extend(data['items'])
             else:
-                logger.debug(f"[API] No more results found at start={start_index}")
+                logger.debug(f"[API] no more items at start={idx}")
                 break
 
-            start_index += 10
+            idx += 10
 
-        # Extract the link field
-        raw_links = [item.get('link', '') for item in results]
-        valid_links = []
-        for link in raw_links:
-            if self.is_link_format_valid(link) and self.is_link_leads_to_a_website(link):
-                valid_links.append(link)
+        raw_links = [item.get('link', '') for item in items]
+        valid_links = [
+            link for link in raw_links
+            if self.is_link_format_valid(link) and self.is_link_leads_to_a_website(link)
+        ]
 
-        logger.info(f"[API] Found {len(valid_links)} valid link(s). (raw total={len(raw_links)})")
-        return valid_links
+        hits = [SearchHit(link=lnk, metadata="", title="") for lnk in valid_links]
+        elapsed = time.time() - start
+        logger.info(f"[API] Returning {len(hits)} hits in {elapsed:.2f}s")
+
+        return SERPMethodOp(
+            name="api",
+            results=hits,
+            usage=UsageInfo(cost=0.0),
+            elapsed_time=elapsed
+        )
+
+
+
+def main():
+    sample="Enes Kuzucu"
+    gs = GoogleSearcher()
+   
+    # scrape_op = gs.search(sample)
+    # print(scrape_op)
+
+    print("\n--- API METHOD ---")
+    api_op = gs.search_with_api(sample, 5)
+    print(api_op)
+
+
+if __name__ == "__main__":
+    main()
