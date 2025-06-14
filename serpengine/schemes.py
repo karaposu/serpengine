@@ -42,6 +42,6 @@ class SerpEngineOp:
     usage: UsageInfo
     results: List[SearchHit]
     elapsed_time: float
-
+    
     def all_links(self) -> List[str]:
         return [hit.link for hit in self.results]

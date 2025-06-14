@@ -2,12 +2,9 @@
 
 # to run python -m serpengine.serpengine
 
-import os
-import re
-import time
-import logging
-import warnings
 
+
+import os, re, time, logging, warnings, asyncio
 from typing import List, Dict, Optional, Union
 from dataclasses import asdict
 from dotenv import load_dotenv
@@ -72,7 +69,10 @@ class SERPEngine:
         allowed_domains: List[str]                       = None,
         forbidden_domains: List[str]                     = None,
         boolean_llm_filter_semantic: bool                = False,
-        output_format: str                               = "json"
+        # output_format: str                               = "json"
+        output_format                               = "object"
+        
+        
     ) -> Union[Dict, SerpEngineOp]:
         """
         Top-level entry: run each method, then aggregate into one SerpEngineOp.
@@ -115,6 +115,50 @@ class SERPEngine:
             return top_op
         else:
             raise ValueError("Unsupported output_format. Use 'json' or 'object'.")
+        
+
+    
+    async def collect_async(
+        self,
+        query: str,
+        regex_based_link_validation: bool             = True,
+        allow_links_forwarding_to_files: bool          = True,
+        keyword_match_based_link_validation: List[str] = None,
+        num_urls: int                                  = 10,
+        search_sources: List[str]                      = None,
+        allowed_countries: List[str]                   = None,
+        forbidden_countries: List[str]                 = None,
+        allowed_domains: List[str]                     = None,
+        forbidden_domains: List[str]                   = None,
+        boolean_llm_filter_semantic: bool              = False,
+        output_format                                  = "object"
+    ) -> Union[Dict, SerpEngineOp]:
+        """
+        Non-blocking version: runs all requested search sources concurrently.
+        """
+        start_time = time.time()
+        sources = search_sources or ["google_search_via_api",
+                                     "google_search_via_request_module"]
+
+        validation_conditions = {
+            "regex_validation_enabled": regex_based_link_validation,
+            "allow_file_links":        allow_links_forwarding_to_files,
+            "keyword_match_list":      keyword_match_based_link_validation
+        }
+
+        # 1️⃣ run each source (async)
+        method_ops = await self._run_search_methods_async(
+            query, num_urls, sources,
+            allowed_countries, forbidden_countries,
+            allowed_domains,  forbidden_domains,
+            validation_conditions,
+            boolean_llm_filter_semantic
+        )
+
+        # 2️⃣ aggregate
+        top_op = self._aggregate(method_ops, start_time)
+        return self._format(top_op, output_format)
+
 
     def _run_search_methods(
         self,
@@ -169,6 +213,68 @@ class SERPEngine:
                 logger.exception(f"Error running '{source}': {e}")
 
         return ops
+    
+
+    
+    # ------------------------------------------------------------------ #
+    #  ❸  NEW async runner                                               #
+    # ------------------------------------------------------------------ #
+    async def _run_search_methods_async(
+        self,
+        query: str,
+        num_urls: int,
+        sources: List[str],
+        allowed_countries: List[str],
+        forbidden_countries: List[str],
+        allowed_domains: List[str],
+        forbidden_domains: List[str],
+        validation_conditions: Dict,
+        boolean_llm_filter_semantic: bool
+    ) -> List[SERPMethodOp]:
+        """
+        Launches all requested search sources concurrently via asyncio.gather().
+        """
+        async_tasks = []
+
+        for source in sources:
+            if source == "google_search_via_api":
+                async_tasks.append(
+                    self.searcher.async_search_with_api(
+                        query, num_urls,
+                        google_search_api_key=self.google_api_key,
+                        cse_id=self.google_cse_id
+                    )
+                )
+            elif source == "google_search_via_request_module":
+                async_tasks.append(self.searcher.async_search(query))
+            else:
+                logger.warning(f"Ignoring unknown source '{source}'")
+
+        # run them concurrently
+        raw_ops: List[SERPMethodOp] = await asyncio.gather(*async_tasks, return_exceptions=True)
+
+        # post-process (filters, LLM) just like sync path
+        processed_ops: List[SERPMethodOp] = []
+        for op in raw_ops:
+            if isinstance(op, Exception):
+                logger.exception("Async search method raised", exc_info=op)
+                continue
+
+            op.results = self._apply_filters(
+                results=op.results,
+                allowed_countries=allowed_countries,
+                forbidden_countries=forbidden_countries,
+                allowed_domains=allowed_domains,
+                forbidden_domains=forbidden_domains,
+                validation_conditions=validation_conditions
+            )
+
+            if boolean_llm_filter_semantic:
+                op.results = self._filter_with_llm(op.results)
+
+            processed_ops.append(op)
+
+        return processed_ops
 
     def _aggregate(
         self,
@@ -249,7 +355,7 @@ class SERPEngine:
                 logger.exception(f"LLM-filter failed on {hit.link}")
         return kept
 
-
+    
 
 
 

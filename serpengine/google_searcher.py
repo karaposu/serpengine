@@ -1,10 +1,10 @@
 # serpengine/google_searcher.py
 
 # to run python -m serpengine.google_searcher
-import os
-import logging
-import time
+
+import os, logging, time, asyncio
 import requests
+import httpx  
 from bs4 import BeautifulSoup
 from typing import List
 
@@ -168,19 +168,59 @@ class GoogleSearcher:
             usage=UsageInfo(cost=0.0),
             elapsed_time=elapsed
         )
+    
+    
+    async def async_search_with_api(
+        self,
+        query: str,
+        num_results: int,
+        google_search_api_key=google_search_api_key,
+        cse_id=cse_id
+    ) -> SERPMethodOp:
+        start, url = time.time(), "https://www.googleapis.com/customsearch/v1"
+        items, idx = [], 1
+        async with httpx.AsyncClient() as client:
+            while len(items) < num_results:
+                params = {
+                    "q": query, "key": google_search_api_key, "cx": cse_id,
+                    "num": min(10, num_results - len(items)), "start": idx
+                }
+                data = (await client.get(url, params=params)).json()
+                if "items" in data: items.extend(data["items"])
+                else: break
+                idx += 10
 
+        links = [it.get("link", "") for it in items]
+        valid = [l for l in links
+                 if self.is_link_format_valid(l)
+                 and self.is_link_leads_to_a_website(l)]
+        hits  = [SearchHit(link=l, metadata="", title="") for l in valid]
+        return SERPMethodOp(
+            name="api_async",
+            results=hits,
+            usage=UsageInfo(cost=0.0),
+            elapsed_time=time.time() - start
+        )
+    
+
+
+
+async def _async_demo():
+    gs = GoogleSearcher()
+    print("\n--- ASYNC API ---")
+    print(await gs.async_search_with_api("Enes Kuzucu", 5))
 
 
 def main():
-    sample="Enes Kuzucu"
-    gs = GoogleSearcher()
-   
-    # scrape_op = gs.search(sample)
-    # print(scrape_op)
+    # sample="Enes Kuzucu"
+    # gs = GoogleSearcher()
+    
+    # print("\n--- API METHOD ---")
+    # api_op = gs.search_with_api(sample, 5)
+    # print(api_op)
 
-    print("\n--- API METHOD ---")
-    api_op = gs.search_with_api(sample, 5)
-    print(api_op)
+    
+    asyncio.run(_async_demo())
 
 
 if __name__ == "__main__":
