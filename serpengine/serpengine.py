@@ -32,6 +32,24 @@ _env_api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
 _env_cse_id    = os.getenv("GOOGLE_CSE_ID")
 
 
+
+@staticmethod
+def _format(top_op: SerpEngineOp, output_format: str):
+    if output_format == "json":
+        return {
+            "usage":        asdict(top_op.usage),
+            "methods":      [asdict(m) for m in top_op.methods],
+            "results":      [asdict(h) for h in top_op.results],
+            "elapsed_time": top_op.elapsed_time
+        }
+    elif output_format == "object":
+        return top_op
+    else:
+        raise ValueError("output_format must be 'json' or 'object'")
+    
+
+
+
 class SERPEngine:
     def __init__(
         self,
@@ -121,63 +139,51 @@ class SERPEngine:
     def collect(
         self,
         query: str,
-        regex_based_link_validation: bool               = True,
-        allow_links_forwarding_to_files: bool            = True,
-        keyword_match_based_link_validation: List[str]   = None,
-        num_urls: int                                    = 10,
-        search_sources: List[str]                        = None,
-        allowed_countries: List[str]                     = None,
-        forbidden_countries: List[str]                   = None,
-        allowed_domains: List[str]                       = None,
-        forbidden_domains: List[str]                     = None,
-        boolean_llm_filter_semantic: bool                = False,
-        # output_format: str                               = "json"
-        output_format                               = "object"
-        
-        
+        regex_based_link_validation: bool             = True,
+        allow_links_forwarding_to_files: bool          = True,
+        keyword_match_based_link_validation: List[str] = None,
+        num_urls: int                                  = 10,
+        search_sources: List[str]                      = None,
+        allowed_countries: List[str]                   = None,
+        forbidden_countries: List[str]                 = None,
+        allowed_domains: List[str]                     = None,
+        forbidden_domains: List[str]                   = None,
+        boolean_llm_filter_semantic: bool              = False,
+        output_format                                  = "object"
     ) -> Union[Dict, SerpEngineOp]:
         """
-        Top-level entry: run each method, then aggregate into one SerpEngineOp.
+        Blocking (synchronous) entry point.
+        Runs selected search sources, applies filters, aggregates into SerpEngineOp,
+        then formats as JSON or returns the object itself.
         """
         start_time = time.time()
+
+        # default sources if none provided
         sources = search_sources or [
             "google_search_via_api",
             "google_search_via_request_module"
         ]
+
         validation_conditions = {
             "regex_validation_enabled": regex_based_link_validation,
-            "allow_file_links": allow_links_forwarding_to_files,
-            "keyword_match_list": keyword_match_based_link_validation
+            "allow_file_links":        allow_links_forwarding_to_files,
+            "keyword_match_list":      keyword_match_based_link_validation
         }
 
-        # 1) Run each search source
+        # 1️⃣ run each source (synchronous path)
         method_ops = self._run_search_methods(
-            query,
-            num_urls,
-            sources,
-            allowed_countries,
-            forbidden_countries,
-            allowed_domains,
-            forbidden_domains,
+            query, num_urls, sources,
+            allowed_countries, forbidden_countries,
+            allowed_domains,  forbidden_domains,
             validation_conditions,
             boolean_llm_filter_semantic
         )
 
-        # 2) Aggregate into a top-level operation
+        # 2️⃣ aggregate results into a top-level operation
         top_op = self._aggregate(method_ops, start_time)
 
-        if output_format == "json":
-            return {
-                "usage":       asdict(top_op.usage),
-                "methods":     [asdict(m) for m in top_op.methods],
-                "results":     [asdict(hit) for hit in top_op.results],
-                "elapsed_time": top_op.elapsed_time,
-            }
-        elif output_format == "object":
-            return top_op
-        else:
-            raise ValueError("Unsupported output_format. Use 'json' or 'object'.")
-        
+        # 3️⃣ format according to output_format ('json' or 'object')
+        return self._format(top_op, output_format)
 
     
     async def collect_async(
@@ -337,6 +343,22 @@ class SERPEngine:
             processed_ops.append(op)
 
         return processed_ops
+    
+
+    
+    @staticmethod
+    def _format(top_op: SerpEngineOp, output_format: str):
+        if output_format == "json":
+            return {
+                "usage":        asdict(top_op.usage),
+                "methods":      [asdict(m) for m in top_op.methods],
+                "results":      [asdict(h) for h in top_op.results],
+                "elapsed_time": top_op.elapsed_time
+            }
+        elif output_format == "object":
+            return top_op
+        else:
+            raise ValueError("output_format must be 'json' or 'object'")
 
     def _aggregate(
         self,
@@ -430,17 +452,19 @@ if __name__ == "__main__":
     # query="3850763999"
 
     
-    result_data = serp_engine.collect(
+    serp_engine_op = serp_engine.collect(
         query=query,
         num_urls=5,
         search_sources=["google_search_via_api"],
         regex_based_link_validation=False,             
         allow_links_forwarding_to_files=False,        
-        output_format="json"  # or "json"
+        output_format="object"  # or "json"
     )
-    print(result_data)
-    for l in result_data:
-        print(l)
+    print(serp_engine_op)
+
+    print(serp_engine_op.all_links())
+    # for l in result_data:
+    #     print(l)results
 
 
 
