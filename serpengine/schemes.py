@@ -1,6 +1,19 @@
 from typing import List
 from dataclasses import dataclass
 
+
+from dataclasses import dataclass, field
+from typing import List, Optional, Any
+
+@dataclass
+class ContextAwareSearchRequestObject:
+    
+    query: str
+    identifier_context: Optional[str] = None 
+    what_to_impute: Optional[Any] = None 
+    task_purpose: Optional[str] = None 
+   
+
 @dataclass
 class SearchHit:
     """One individual search result."""

@@ -1,182 +1,187 @@
-# SERPEngine 
+````markdown
+# SERPEngine
 
-**SERPEngine** Production grade search module to find links through search engines. 
-- uses google search API
-- made for production.  You need API keys
-- includes various filters including LLM based one. So you can filter the links based on domain, metadata, 
+**SERPEngine** – Production-grade search module to find links through search engines.
 
+* uses Google Search API  
+* made for production – you need API keys  
+* includes various filters (including an LLM-based one) so you can filter links by domain, metadata, etc.  
+* returns structured dataclasses (`SearchHit`, `SERPMethodOp`, `SerpEngineOp`)
 
-## Installation
+---
 
-1. **Clone the Repository:**
+## 1. Installation
 
-    ```bash
-    pip install serpengine [repo]
-    ```
+```bash
+pip install serpengine
+````
 
-2. Usage: 
+---
 
+## 2. Environment variables
 
-```python
-from serpengine import SERPEngine
+Create a `.env` (or export vars manually):
 
-# Initialize the searcher
-serpengine = SERPEngine()
-
-    result_data = serpengine.collect(
-        query="best food in USA",
-        num_urls=5,
-        search_sources=["google_search_via_api"],
-        regex_based_link_validation=False,             
-        allow_links_forwarding_to_files=False,        
-        output_format="json"  # or "linksearch"
-    )
-    print(result_data)
+```env
+GOOGLE_SEARCH_API_KEY=XXXXXXXXXXXXXXXXXXXXXXXXXXXX
+GOOGLE_CSE_ID=yyyyyyyyyyyyyyyyyyyyyyyyy:zzz
 ```
 
+Both values are required; the engine will raise if either is missing.
 
-## Getting Google Credentials:
+---
 
-Create or Select a Google Cloud Project:
-Go to the Google Cloud Console.
-Create a new project (or select an existing one).
-Enable the Custom Search API:
+## 3. Dataclass cheat-sheet
 
-In the Cloud Console, navigate to APIs & Services > Library.
-Search for "Custom Search API".
-Click on it and then press the "Enable" button.
-Create Credentials (API Key):
+| Class          | What it represents                                                                                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `SearchHit`    | One URL result (`link`, `title`, `metadata`).                                                                                                                      |
+| `UsageInfo`    | Billing info (currently just `cost: float`).                                                                                                                       |
+| `SERPMethodOp` | Output of **one** search method.<br>Fields: `name`, `results: List[SearchHit]`, `usage`, `elapsed_time`.                                                           |
+| `SerpEngineOp` | Aggregated result of a full `collect()` call.<br>Fields: `usage`, `methods: List[SERPMethodOp]`, `results`, `elapsed_time`.<br>➕ helper `all_links() -> List[str]` |
 
-Once the API is enabled, go to APIs & Services > Credentials in the sidebar.
-Click "Create Credentials" and choose "API key".
-A dialog will display your new API key. Copy this key.
+---
 
-Getting the Custom Search Engine ID (GOOGLE_CSE_ID)
-This ID tells the API which search engine configuration to use.
+## 4. Quick-start (sync)
 
-Visit the Google Custom Search Engine (CSE) Site:
+```python
+from serpengine.serpengine import SERPEngine
 
-Go to Google Custom Search Engine.
-Create a Custom Search Engine:
+engine = SERPEngine()
 
-Click "Add" or "New Search Engine".
-In the "Sites to search" field, you can either enter a specific website (if you want to restrict the search) or enter a placeholder like *.com to allow broader searches.
-Fill in the other required fields (like a name for your search engine) and click "Create".
-Retrieve Your CSE ID:
+op = engine.collect(
+    query="best pizza in Helsinki",
+    num_urls=5,
+    search_sources=["google_search_via_api"],   # or add "google_search_via_request_module"
+    output_format="object"                      # default
+)
 
-Once your search engine is created, go to its Control Panel.
+print(op.elapsed_time, "sec")
+print(op.all_links())
+```
 
-Look for the "Search engine ID" (often labeled as cx). It will be a string of characters.
+---
 
-Copy this ID.
+## 5. Quick-start (async)
 
+```python
+import asyncio
+from serpengine.serpengine import SERPEngine
 
+async def main():
+    eng = SERPEngine()
+    op = await eng.collect_async(
+        query="python tutorials",
+        num_urls=6,
+        search_sources=["google_search_via_api", "google_search_via_request_module"],
+        output_format="object"
+    )
+    print(op.all_links())
 
+asyncio.run(main())
+```
 
+LM filtering are applied automatically.
 
-### Parameters
+---
 
-- `query` (str): The search query.
-- `validation_conditions` (Dict, optional): Additional validation rules for filtering links.
-- `num_urls` (int): Number of links to retrieve.
-- `search_sources` (List[str]): Search sources to use (e.g., `"google_search_via_api"`, `"google_search_via_request_module"`).
-- `allowed_countries` (List[str], optional): List of country codes to allow.
-- `forbidden_countries` (List[str], optional): List of country codes to forbid.
-- `allowed_domains` (List[str], optional): List of domains to allow.
-- `forbidden_domains` (List[str], optional): List of domains to block.
-- `filter_llm` (bool, optional): Whether to use AI-based filtering.
-- `output_format` (str): Output format, either `"json"` or `"linksearch"`.
+## Getting Google Credentials
+
+### 1. Create or Select a Google Cloud Project
+
+1. Open the **[Google Cloud Console](https://console.cloud.google.com/)**.
+2. Either **create a new project** or **select an existing one** from the project picker.
+
+### 2. Enable the **Custom Search API**
+
+1. In the left-hand menu, navigate to **APIs & Services → Library**.
+2. Search for **“Custom Search API”**.
+3. Click the result, then press **Enable**.
+
+### 3. Create Credentials (API Key)
+
+> This becomes your **`GOOGLE_SEARCH_API_KEY`**.
+
+1. Still under **APIs & Services**, choose **Credentials**.
+2. Click **Create Credentials → API key**.
+3. Copy the key shown in the dialog and keep it safe.
+
+---
+
+## Getting the Custom Search Engine ID (`GOOGLE_CSE_ID`)
+
+### 1. Open Google Custom Search Engine
+
+Go to **[cse.google.com/cse](https://cse.google.com/cse/)**.
+
+### 2. Create a New Search Engine
+
+1. Click **Add** (or **“New Search Engine”**).
+2. In **“Sites to search”**, you can:
+
+   * Enter a specific domain (e.g., `example.com`) **or**
+   * Use a wildcard like `*.com` (if you intend to search the entire web—later you can enable *Search the entire web* in the control panel).
+3. Give your CSE a **name**, then click **Create**.
+
+### 3. Retrieve Your CSE ID
+
+1. Open the **Control Panel** for the search engine you just created.
+2. Locate the **“Search engine ID”** (sometimes labeled **cx**).
+3. Copy that string—this is your **`GOOGLE_CSE_ID`**.
+
+---
+
+## Next Steps
+
+Add both credentials to your environment, e.g. in a `.env` file:
+
+```env
+GOOGLE_SEARCH_API_KEY=YOUR_API_KEY_HERE
+GOOGLE_CSE_ID=YOUR_CSE_ID_HERE
+```
+
+Then load them in your code (the **SERPEngine** does this automatically with `python-dotenv`).
+
+---
 
 ### Output
 
-- **JSON Format:**
+* **JSON Format:**
 
-    ```json
-    {
-        "operation_result": {
-            "total_time": 1.234,
-            "errors": []
-        },
-        "results": [
-            {
-                "link": "https://digikey.com/product1",
-                "metadata": "",
-                "title": ""
-            },
-            ...
-        ]
-    }
-    ```
+  ```json
+  {
+      "operation_result": {
+          "total_time": 1.234,
+          "errors": []
+      },
+      "results": [
+          {
+              "link": "https://digikey.com/product1",
+              "metadata": "",
+              "title": ""
+          }
+      ]
+  }
+  ```
 
-- **LinkSearch Objects:**
+* **Filters:**
 
-    A list of `LinkSearch` objects with attributes `link`, `metadata`, and `title`.
+  * **Allowed Domains:** Restricts search results to specified domains.
+    Example: `allowed_domains=["digikey.com"]`
+  * **Keyword Match Based Link Validation:** Ensures links contain certain keywords.
+    Example: `keyword_match_based_link_validation=["STM32"]`
+  * **Allowed Countries (Optional):** Filters links by TLD to include only specified countries.
+  * **Forbidden Countries (Optional):** Excludes links from specified countries based on their TLD.
+  * **Additional Validation Conditions:** Custom logic to further filter links.
 
-## Features
+* **Output Formats:**
 
-- **Search Modules:**
-  
-  - **Simple Google Search Module:** Scrapes Google search results directly from the HTML.
-  - **Google Search API Module:** Utilizes the Google Custom Search API for fetching search results.
+  * **JSON:** Structured dictionary with operation results and links.
+  * **Objects:** List of `LinkSearch` dataclass instances for flexible manipulation.
 
-- **Filters:**
+* **Error Handling and Logging:** Captures and logs errors during search and filtering for easier debugging.
 
-  - **Allowed Domains:**
-    - **Description:** Restricts search results to specified domains. For example, setting `allowed_domains=["digikey.com"]` ensures only links from Digi-Key are collected.
-  
-  - **Keyword Match Based Link Validation:**
-    - **Description:** Ensures that the collected links contain specific keywords. For instance, `keyword_match_based_link_validation=["STM32"]` filters out any links that do not include the keyword "STM32".
+* **Extensibility:** Designed for easy extension—add new search sources or advanced filters as needed.
 
-  - **Allowed Countries (Optional):**
-    - **Description:** Filters links based on the top-level domain (TLD) to include only those from specified countries.
-
-  - **Forbidden Countries (Optional):**
-    - **Description:** Excludes links from specified countries based on their TLD.
-
-  - **Additional Validation Conditions:**
-    - **Description:** Allows for custom validation logic to further filter links based on user-defined criteria.
-
-- **Output Formats:**
-  
-  - **JSON:** Provides a structured dictionary containing operation results and the list of collected links.
-  - **LinkSearch Objects:** Returns a list of `LinkSearch` dataclass instances for flexible manipulation within Python.
-
-- **Error Handling and Logging:**
-  
-  - Captures and logs errors encountered during the search and filtering processes, facilitating easier debugging and maintenance.
-
-- **Extensibility:**
-  
-  - Designed to be easily extendable, allowing integration of additional search sources or more sophisticated filtering mechanisms as needed.
-
-## Requirements
-
-Ensure you have the following dependencies installed. They are listed in the `requirements.txt` file:
-
-```plaintext
-requests>=2.25.1
-python-dotenv>=0.19.0
-beautifulsoup4>=4.9.3
 ```
-
-You can install them via:
-
-```bash
-pip install -r requirements.txt
 ```
-
-## Configuration
-
-Before using the Link Search Agent, set up your environment variables:
-
-1. **Create a `.env` File:**
-
-    ```env
-    GOOGLE_API_KEY=your_google_api_key
-    GOOGLE_CSE_ID=your_custom_search_engine_id
-    ```
-
-2. **Ensure the `.env` File is in the Root Directory or the Directory Where the Script Runs.**
-
-
-
