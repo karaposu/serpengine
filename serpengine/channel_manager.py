@@ -19,12 +19,12 @@ class ChannelRegistry:
             "required_env": ["GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_ID"],
             "description": "Google Custom Search API (paid after 100 queries/day)"
         },
-        "google_scraper": {
-            "module": "serpengine.google_searcher",
-            "class": "GoogleSearcher",
-            "required_env": [],
-            "description": "Google HTML scraper (free but may be blocked)"
-        },
+        # "google_scraper": {
+        #     "module": "serpengine.google_searcher",
+        #     "class": "GoogleSearcher",
+        #     "required_env": [],
+        #     "description": "Google HTML scraper (free but may be blocked)"
+        # },
         "serpapi": {
             "module": "serpengine.serpapi_searcher",
             "class": "SerpApiSearcher",
@@ -198,7 +198,7 @@ class ChannelManager:
             num_results: Number of results to fetch
             
         Returns:
-            SERPMethodOp with results
+            SerpChannelOp with results
         """
         searcher = self.searchers.get(channel_name)
         if not searcher:
@@ -226,7 +226,7 @@ class ChannelManager:
             num_results: Number of results to fetch
             
         Returns:
-            SERPMethodOp with results
+            SerpChannelOp with results
         """
         searcher = self.searchers.get(channel_name)
         if not searcher:

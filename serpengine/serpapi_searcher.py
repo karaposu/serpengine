@@ -15,7 +15,7 @@ try:
 except ImportError:
     raise ImportError("Please install serpapi package: pip install google-search-results")
 
-from .schemes import SearchHit, UsageInfo, SERPMethodOp
+from .schemes import SearchHit, UsageInfo, SerpChannelOp
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -300,7 +300,7 @@ class SerpApiSearcher:
         num_results: int = 10,
         language: str = "en",
         country: str = "us"
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Perform a Google search using SerpApi.
         
@@ -312,7 +312,7 @@ class SerpApiSearcher:
             country: Country code for Google domain (e.g., "us")
         
         Returns:
-            SERPMethodOp with results and usage info
+            SerpChannelOp with results and usage info
         """
         start = time.time()
         
@@ -338,7 +338,7 @@ class SerpApiSearcher:
             # Check for errors
             if "error" in results:
                 logger.error(f"[SerpApi] Error: {results['error']}")
-                return SERPMethodOp(
+                return SerpChannelOp(
                     name="serpapi",
                     results=[],
                     usage=UsageInfo(cost=0.0),
@@ -361,7 +361,7 @@ class SerpApiSearcher:
             elapsed = time.time() - start
             logger.info(f"[SerpApi] Returning {len(hits)} hits in {elapsed:.2f}s (cost: ${cost:.4f})")
             
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="serpapi",
                 results=hits,
                 usage=UsageInfo(cost=cost),
@@ -370,7 +370,7 @@ class SerpApiSearcher:
             
         except Exception as e:
             logger.exception(f"[SerpApi] Error in search: {e}")
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="serpapi",
                 results=[],
                 usage=UsageInfo(cost=0.0),
@@ -381,7 +381,7 @@ class SerpApiSearcher:
         self,
         query: str,
         custom_params: Dict[str, Any]
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Search with custom parameters for advanced use cases.
         
@@ -391,7 +391,7 @@ class SerpApiSearcher:
                           (will override defaults except api_key and query)
         
         Returns:
-            SERPMethodOp with results
+            SerpChannelOp with results
         """
         start = time.time()
         
@@ -415,7 +415,7 @@ class SerpApiSearcher:
             
             if "error" in results:
                 logger.error(f"[SerpApi] Error: {results['error']}")
-                return SERPMethodOp(
+                return SerpChannelOp(
                     name="serpapi_custom",
                     results=[],
                     usage=UsageInfo(cost=0.0),
@@ -428,7 +428,7 @@ class SerpApiSearcher:
             elapsed = time.time() - start
             logger.info(f"[SerpApi Custom] Returning {len(hits)} hits in {elapsed:.2f}s")
             
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="serpapi_custom",
                 results=hits,
                 usage=UsageInfo(cost=cost),
@@ -437,7 +437,7 @@ class SerpApiSearcher:
             
         except Exception as e:
             logger.exception(f"[SerpApi] Error in search_with_params: {e}")
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="serpapi_custom",
                 results=[],
                 usage=UsageInfo(cost=0.0),
@@ -451,7 +451,7 @@ class SerpApiSearcher:
         num_results: int = 10,
         language: str = "en",
         country: str = "us"
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Async wrapper for search using ThreadPoolExecutor.
         (SerpApi doesn't provide native async support)
@@ -478,7 +478,7 @@ class SerpApiSearcher:
         location: str = "United States",
         language: str = "en",
         country: str = "us"
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Search with pagination to get more than 100 results.
         SerpApi limits to 100 results per query, so we paginate.
@@ -491,7 +491,7 @@ class SerpApiSearcher:
             country: Country code
         
         Returns:
-            SERPMethodOp with all paginated results
+            SerpChannelOp with all paginated results
         """
         start = time.time()
         all_hits = []
@@ -545,7 +545,7 @@ class SerpApiSearcher:
         elapsed = time.time() - start
         logger.info(f"[SerpApi Pagination] Returning {len(all_hits)} hits in {elapsed:.2f}s")
         
-        return SERPMethodOp(
+        return SerpChannelOp(
             name="serpapi_paginated",
             results=all_hits[:total_results],  # Trim to requested number
             usage=UsageInfo(cost=total_cost),

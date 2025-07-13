@@ -11,7 +11,7 @@ import httpx
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
-from .schemes import SearchHit, UsageInfo, SERPMethodOp
+from .schemes import SearchHit, UsageInfo, SerpChannelOp
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -150,7 +150,7 @@ class GoogleSearchAPI:
         query: str,
         num_results: int = 10,
         **kwargs
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Perform a Google Custom Search.
         
@@ -167,7 +167,7 @@ class GoogleSearchAPI:
                 - sort: Sort order
         
         Returns:
-            SERPMethodOp with results and usage info
+            SerpChannelOp with results and usage info
         """
         start_time = time.time()
         all_items = []
@@ -266,7 +266,7 @@ class GoogleSearchAPI:
             f"in {elapsed:.2f}s (cost: ${cost:.4f})"
         )
         
-        return SERPMethodOp(
+        return SerpChannelOp(
             name="google_api",
             results=hits,
             usage=UsageInfo(cost=cost),
@@ -278,7 +278,7 @@ class GoogleSearchAPI:
         query: str,
         num_results: int = 10,
         **kwargs
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Async version of search using httpx.
         """
@@ -348,7 +348,7 @@ class GoogleSearchAPI:
         
         logger.info(f"[Google API Async] Completed: {len(hits)} results in {elapsed:.2f}s")
         
-        return SERPMethodOp(
+        return SerpChannelOp(
             name="google_api_async",
             results=hits,
             usage=UsageInfo(cost=cost),
@@ -360,7 +360,7 @@ class GoogleSearchAPI:
         query: str,
         num_results: int = 10,
         **kwargs
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Search for images using Google Custom Search API.
         """
@@ -373,7 +373,7 @@ class GoogleSearchAPI:
         site: str,
         num_results: int = 10,
         **kwargs
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Search within a specific site.
         

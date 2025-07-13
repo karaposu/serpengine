@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from base64 import b64encode
 from dotenv import load_dotenv
 
-from .schemes import SearchHit, UsageInfo, SERPMethodOp
+from .schemes import SearchHit, UsageInfo, SerpChannelOp
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -153,7 +153,7 @@ class DataForSEOSearcher:
         language_code: str = "en",
         num_results: int = 100,
         device: str = "desktop"
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Use DataForSEO Live API for instant results.
         
@@ -165,7 +165,7 @@ class DataForSEOSearcher:
             device: "desktop" or "mobile"
         
         Returns:
-            SERPMethodOp with results and usage info
+            SerpChannelOp with results and usage info
         """
         start = time.time()
         url = f"{self.BASE_URL}/serp/google/organic/live/advanced"
@@ -190,7 +190,7 @@ class DataForSEOSearcher:
             # Check for API errors
             if result.get('status_code') != 20000:
                 logger.error(f"[DataForSEO] API error: {result.get('status_message')}")
-                return SERPMethodOp(
+                return SerpChannelOp(
                     name="dataforseo_live",
                     results=[],
                     usage=UsageInfo(cost=0.0),
@@ -214,7 +214,7 @@ class DataForSEOSearcher:
             elapsed = time.time() - start
             logger.info(f"[DataForSEO Live] Returning {len(hits)} hits in {elapsed:.2f}s")
             
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="dataforseo_live",
                 results=hits,
                 usage=UsageInfo(cost=cost),
@@ -223,7 +223,7 @@ class DataForSEOSearcher:
             
         except Exception as e:
             logger.exception(f"[DataForSEO] Error in search_live: {e}")
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="dataforseo_live",
                 results=[],
                 usage=UsageInfo(cost=0.0),
@@ -237,7 +237,7 @@ class DataForSEOSearcher:
         language_code: str = "en",
         num_results: int = 100,
         device: str = "desktop"
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Async version of search_live using httpx.
         """
@@ -261,7 +261,7 @@ class DataForSEOSearcher:
                 
                 if result.get('status_code') != 20000:
                     logger.error(f"[DataForSEO Async] API error: {result.get('status_message')}")
-                    return SERPMethodOp(
+                    return SerpChannelOp(
                         name="dataforseo_live_async",
                         results=[],
                         usage=UsageInfo(cost=0.0),
@@ -282,7 +282,7 @@ class DataForSEOSearcher:
                 elapsed = time.time() - start
                 logger.info(f"[DataForSEO Async] Returning {len(hits)} hits in {elapsed:.2f}s")
                 
-                return SERPMethodOp(
+                return SerpChannelOp(
                     name="dataforseo_live_async",
                     results=hits,
                     usage=UsageInfo(cost=cost),
@@ -291,7 +291,7 @@ class DataForSEOSearcher:
                 
         except Exception as e:
             logger.exception(f"[DataForSEO Async] Error: {e}")
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="dataforseo_live_async",
                 results=[],
                 usage=UsageInfo(cost=0.0),
@@ -306,7 +306,7 @@ class DataForSEOSearcher:
         num_results: int = 100,
         target_domain: Optional[str] = None,
         search_param: Optional[str] = None
-    ) -> SERPMethodOp:
+    ) -> SerpChannelOp:
         """
         Search with additional filters like target domain or search parameters.
         
@@ -319,7 +319,7 @@ class DataForSEOSearcher:
             search_param: Additional search parameters (e.g., "&tbs=qdr:d" for past day)
         
         Returns:
-            SERPMethodOp with filtered results
+            SerpChannelOp with filtered results
         """
         start = time.time()
         url = f"{self.BASE_URL}/serp/google/organic/live/advanced"
@@ -348,7 +348,7 @@ class DataForSEOSearcher:
             
             if result.get('status_code') != 20000:
                 logger.error(f"[DataForSEO] API error: {result.get('status_message')}")
-                return SERPMethodOp(
+                return SerpChannelOp(
                     name="dataforseo_filtered",
                     results=[],
                     usage=UsageInfo(cost=0.0),
@@ -369,7 +369,7 @@ class DataForSEOSearcher:
             elapsed = time.time() - start
             logger.info(f"[DataForSEO Filtered] Returning {len(hits)} hits in {elapsed:.2f}s")
             
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="dataforseo_filtered",
                 results=hits,
                 usage=UsageInfo(cost=cost),
@@ -378,7 +378,7 @@ class DataForSEOSearcher:
             
         except Exception as e:
             logger.exception(f"[DataForSEO] Error in search_with_filters: {e}")
-            return SERPMethodOp(
+            return SerpChannelOp(
                 name="dataforseo_filtered",
                 results=[],
                 usage=UsageInfo(cost=0.0),

@@ -8,7 +8,7 @@ from dataclasses import asdict
 from dotenv import load_dotenv
 
 from .channel_manager import ChannelManager, ChannelRegistry
-from .schemes import SearchHit, UsageInfo, SerpChannelOp, SerpEngineOp, ContextAwareSearchRequestObject
+from .schemes import SearchHit, UsageInfo, SERPMethodOp, SerpEngineOp, ContextAwareSearchRequestObject
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
 warnings.filterwarnings(
@@ -78,7 +78,7 @@ class SERPEngine:
         regex_based_link_validation: bool             = True,
         allow_links_forwarding_to_files: bool          = True,
         keyword_match_based_link_validation: List[str] = None,
-        num_of_links_per_channel: int                  = 10,
+        num_urls: int                                  = 10,
         search_sources: List[str]                      = None,
         allowed_countries: List[str]                   = None,
         forbidden_countries: List[str]                 = None,
@@ -93,7 +93,7 @@ class SERPEngine:
         Args:
             query: Search query
             search_sources: List of channels to use. If None, uses all available.
-            num_of_links_per_channel: Number of results per channel
+            num_urls: Number of results per channel
             output_format: "object" or "json"
             ... (other filter parameters)
             
@@ -113,8 +113,8 @@ class SERPEngine:
         }
         
         # Run searches
-        channel_ops = self._run_search_channels(
-            query, num_of_links_per_channel, sources,
+        method_ops = self._run_search_methods(
+            query, num_urls, sources,
             allowed_countries, forbidden_countries,
             allowed_domains, forbidden_domains,
             validation_conditions,
@@ -122,7 +122,7 @@ class SERPEngine:
         )
         
         # Aggregate results
-        top_op = self._aggregate(channel_ops, start_time)
+        top_op = self._aggregate(method_ops, start_time)
         
         # Format output
         return self._format(top_op, output_format)
@@ -133,7 +133,7 @@ class SERPEngine:
         regex_based_link_validation: bool             = True,
         allow_links_forwarding_to_files: bool          = True,
         keyword_match_based_link_validation: List[str] = None,
-        num_of_links_per_channel: int                  = 10,
+        num_urls: int                                  = 10,
         search_sources: List[str]                      = None,
         allowed_countries: List[str]                   = None,
         forbidden_countries: List[str]                 = None,
@@ -158,8 +158,8 @@ class SERPEngine:
         }
         
         # Run async searches
-        channel_ops = await self._run_search_channels_async(
-            query, num_of_links_per_channel, sources,
+        method_ops = await self._run_search_methods_async(
+            query, num_urls, sources,
             allowed_countries, forbidden_countries,
             allowed_domains, forbidden_domains,
             validation_conditions,
@@ -167,7 +167,7 @@ class SERPEngine:
         )
         
         # Aggregate results
-        top_op = self._aggregate(channel_ops, start_time)
+        top_op = self._aggregate(method_ops, start_time)
         
         # Format output
         return self._format(top_op, output_format)
@@ -187,10 +187,10 @@ class SERPEngine:
         
         return sources
     
-    def _run_search_channels(
+    def _run_search_methods(
         self,
         query: str,
-        num_of_links_per_channel: int,
+        num_urls: int,
         sources: List[str],
         allowed_countries: List[str],
         forbidden_countries: List[str],
@@ -198,7 +198,7 @@ class SERPEngine:
         forbidden_domains: List[str],
         validation_conditions: Dict,
         boolean_llm_filter_semantic: bool
-    ) -> List[SerpChannelOp]:
+    ) -> List[SERPMethodOp]:
         """Run search on each channel synchronously."""
         ops = []
         
@@ -206,7 +206,7 @@ class SERPEngine:
             try:
                 # Execute search through channel manager
                 op = self.channel_manager.execute_search(
-                    channel_name, query, num_of_links_per_channel
+                    channel_name, query, num_urls
                 )
                 
                 # Apply filters
@@ -229,10 +229,10 @@ class SERPEngine:
         
         return ops
     
-    async def _run_search_channels_async(
+    async def _run_search_methods_async(
         self,
         query: str,
-        num_of_links_per_channel: int,
+        num_urls: int,
         sources: List[str],
         allowed_countries: List[str],
         forbidden_countries: List[str],
@@ -240,13 +240,13 @@ class SERPEngine:
         forbidden_domains: List[str],
         validation_conditions: Dict,
         boolean_llm_filter_semantic: bool
-    ) -> List[SerpChannelOp]:
+    ) -> List[SERPMethodOp]:
         """Run search on each channel asynchronously."""
         # Create async tasks
         tasks = []
         for channel_name in sources:
             task = self.channel_manager.execute_search_async(
-                channel_name, query, num_of_links_per_channel
+                channel_name, query, num_urls
             )
             tasks.append(task)
         
@@ -344,20 +344,20 @@ class SERPEngine:
     
     def _aggregate(
         self,
-        channel_ops: List[SerpChannelOp],
+        method_ops: List[SERPMethodOp],
         start_time: float
     ) -> SerpEngineOp:
-        """Aggregate multiple channel operations into one result."""
+        """Aggregate multiple method operations into one result."""
         all_hits = []
         total_cost = 0.0
         
-        for op in channel_ops:
+        for op in method_ops:
             all_hits.extend(op.results)
             total_cost += op.usage.cost
         
         return SerpEngineOp(
             usage=UsageInfo(cost=total_cost),
-            channels=channel_ops,
+            methods=method_ops,
             results=all_hits,
             elapsed_time=time.time() - start_time
         )
@@ -368,7 +368,7 @@ class SERPEngine:
         if output_format == "json":
             return {
                 "usage": asdict(top_op.usage),
-                "channels": [asdict(c) for c in top_op.channels],
+                "methods": [asdict(m) for m in top_op.methods],
                 "results": [asdict(h) for h in top_op.results],
                 "elapsed_time": top_op.elapsed_time
             }
@@ -382,73 +382,34 @@ def main():
     """Demo the refactored SERPEngine."""
     print("=== Refactored SERPEngine Demo ===\n")
     
-    # 1. Check available channels
-    print("1. Checking available channels...")
-    try:
-        serp = SERPEngine(channels=[])
-        channel_info = serp.list_channels()
-        
-        for name, info in channel_info.items():
-            status = "✓ Ready" if info["initialized"] else f"✗ Missing: {info['missing_env']}"
-            print(f"   {name}: {status}")
-    except ValueError:
-        pass
     
-    # 2. Initialize with specific channels
+    print("2 --------------------")
     print("\n2. Initializing with specific channels...")
-    try:
-        serp = SERPEngine(channels=["google_scraper", "serpapi"])
-        print(f"   Initialized: {serp.available_channels}")
-    except ValueError as e:
-        print(f"   Error: {e}")
-    
-    # 3. Run a search
-    if 'serp' in locals() and serp.available_channels:
-        print("\n3. Running search...")
-        
-        result = serp.collect(
+    serp = SERPEngine(channels=["google_api", "serpapi"])
+
+
+    result = serp.collect(
             query="Python web scraping",
-            num_of_links_per_channel=3,
+            num_urls=3,
             output_format="object"
         )
-        
-        print(f"   Total results: {len(result.results)}")
-        print(f"   Total cost: ${result.usage.cost:.4f}")
-        print(f"   Time: {result.elapsed_time:.2f}s")
-        
-        # Show channel breakdown
-        print("\n   Channel breakdown:")
-        for channel in result.channels:
-            print(f"   {channel.name}: {len(channel.results)} results")
-        
-        # Show first result
-        if result.results:
-            hit = result.results[0]
-            print(f"\n   First result:")
-            print(f"   Title: {hit.title}")
-            print(f"   URL: {hit.link}")
-            print(f"   Channel: {hit.channel_name} (rank #{hit.channel_rank})")
-        
-        # Show results by channel
-        print("\n   Results by channel:")
-        for channel, hits in result.results_by_channel().items():
-            print(f"   {channel}: {len(hits)} results")
     
-    # 4. Test async search
-    print("\n4. Testing async search...")
     
-    async def test_async():
-        try:
-            serp = SERPEngine()
-            result = await serp.collect_async(
-                query="machine learning",
-                num_of_links_per_channel=5
-            )
-            print(f"   Async search: {len(result.results)} results in {result.elapsed_time:.2f}s")
-        except Exception as e:
-            print(f"   Error: {e}")
+        
+    print(f"   Total results: {len(result.results)}")
+    print(f"   Total cost: ${result.usage.cost:.4f}")
+    print(f"   Time: {result.elapsed_time:.2f}s")
     
-    asyncio.run(test_async())
+    # Show first result
+    if result.results:
+        hit = result.results[0]
+        print(f"\n   First result:")
+        print(f"   Title: {hit.title}")
+        print(f"   URL: {hit.link}")
+    
+    
+    
+   
 
 
 if __name__ == "__main__":
