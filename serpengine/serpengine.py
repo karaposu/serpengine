@@ -1,16 +1,13 @@
-#here is serpengine.py
+# serpengine.py
 
 # to run python -m serpengine.serpengine
-
-
 
 import os, re, time, logging, warnings, asyncio
 from typing import List, Dict, Optional, Union
 from dataclasses import asdict
 from dotenv import load_dotenv
 
-from .google_searcher import GoogleSearcher
-from .myllmservice import MyLLMService
+from .channel_manager import ChannelManager, ChannelRegistry
 from .schemes import SearchHit, UsageInfo, SERPMethodOp, SerpEngineOp, ContextAwareSearchRequestObject
 
 # ─── Setup ─────────────────────────────────────────────────────────────────────
@@ -28,114 +25,53 @@ logging.getLogger("httpx").setLevel(logging.ERROR)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
-_env_api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
-_env_cse_id    = os.getenv("GOOGLE_CSE_ID")
-
-
-
-@staticmethod
-def _format(top_op: SerpEngineOp, output_format: str):
-    if output_format == "json":
-        return {
-            "usage":        asdict(top_op.usage),
-            "methods":      [asdict(m) for m in top_op.methods],
-            "results":      [asdict(h) for h in top_op.results],
-            "elapsed_time": top_op.elapsed_time
-        }
-    elif output_format == "object":
-        return top_op
-    else:
-        raise ValueError("output_format must be 'json' or 'object'")
-    
-
-
 
 class SERPEngine:
+    """Main search orchestration engine."""
+    
     def __init__(
         self,
-        GOOGLE_SEARCH_API_KEY: Optional[str] = None,
-        GOOGLE_CSE_ID: Optional[str]        = None
+        channels: List[str] = None,
+        credentials: Dict[str, str] = None,
+        auto_check_env: bool = True
     ):
-        # Validate API key
-        key = GOOGLE_SEARCH_API_KEY or _env_api_key
-        if not key:
+        """
+        Initialize SERPEngine with specified channels.
+        
+        Args:
+            channels: List of channel names to initialize. If None, all available channels
+                     with valid credentials will be initialized.
+            credentials: Optional dict of credentials to override environment variables
+            auto_check_env: If True, automatically check for required env vars
+        """
+        # Initialize channel manager
+        self.channel_manager = ChannelManager(credentials)
+        
+        # Initialize channels
+        self.available_channels = self.channel_manager.initialize_channels(
+            channels, auto_check_env
+        )
+        
+        if not self.available_channels:
             raise ValueError(
-                "Missing environment variable 'GOOGLE_SEARCH_API_KEY'."
+                "No search channels could be initialized. "
+                "Please check your credentials and channel configuration."
             )
-        self.google_api_key = key
-
-        # Validate CSE ID
-        cx = GOOGLE_CSE_ID or _env_cse_id
-        if not cx:
-            raise ValueError(
-                "Missing environment variable 'GOOGLE_CSE_ID'."
-            )
-        self.google_cse_id = cx
-
-        self.searcher = GoogleSearcher()
-
+        
+        logger.info(f"Successfully initialized channels: {self.available_channels}")
+    
+    def list_channels(self) -> Dict[str, Dict]:
+        """List all available channels and their status."""
+        return self.channel_manager.list_channels_status()
     
     def context_aware_collect(
         self,
         input: ContextAwareSearchRequestObject,
-        regex_based_link_validation: bool               = True,
-        allow_links_forwarding_to_files: bool            = True,
-        keyword_match_based_link_validation: List[str]   = None,
-        num_urls: int                                    = 10,
-        search_sources: List[str]                        = None,
-        allowed_countries: List[str]                     = None,
-        forbidden_countries: List[str]                   = None,
-        allowed_domains: List[str]                       = None,
-        forbidden_domains: List[str]                     = None,
-        boolean_llm_filter_semantic: bool                = False,
-        # output_format: str                               = "json"
-        output_format                               = "object"
-        
-        
+        **kwargs
     ) -> Union[Dict, SerpEngineOp]:
-        """
-        Top-level entry: run each method, then aggregate into one SerpEngineOp.
-        """
-        start_time = time.time()
-        sources = search_sources or [
-            "google_search_via_api",
-            "google_search_via_request_module"
-        ]
-        validation_conditions = {
-            "regex_validation_enabled": regex_based_link_validation,
-            "allow_file_links": allow_links_forwarding_to_files,
-            "keyword_match_list": keyword_match_based_link_validation
-        }
-
-        # 1) Run each search source
-        method_ops = self._run_search_methods(
-            query,
-            num_urls,
-            sources,
-            allowed_countries,
-            forbidden_countries,
-            allowed_domains,
-            forbidden_domains,
-            validation_conditions,
-            boolean_llm_filter_semantic
-        )
-
-        # 2) Aggregate into a top-level operation
-        top_op = self._aggregate(method_ops, start_time)
-
-        if output_format == "json":
-            return {
-                "usage":       asdict(top_op.usage),
-                "methods":     [asdict(m) for m in top_op.methods],
-                "results":     [asdict(hit) for hit in top_op.results],
-                "elapsed_time": top_op.elapsed_time,
-            }
-        elif output_format == "object":
-            return top_op
-        else:
-            raise ValueError("Unsupported output_format. Use 'json' or 'object'.")
-        
-
+        """Context-aware search entry point."""
+        return self.collect(query=input.query, **kwargs)
+    
     def collect(
         self,
         query: str,
@@ -149,42 +85,47 @@ class SERPEngine:
         allowed_domains: List[str]                     = None,
         forbidden_domains: List[str]                   = None,
         boolean_llm_filter_semantic: bool              = False,
-        output_format                                  = "object"
+        output_format: str                             = "object"
     ) -> Union[Dict, SerpEngineOp]:
         """
-        Blocking (synchronous) entry point.
-        Runs selected search sources, applies filters, aggregates into SerpEngineOp,
-        then formats as JSON or returns the object itself.
+        Perform synchronous search across channels.
+        
+        Args:
+            query: Search query
+            search_sources: List of channels to use. If None, uses all available.
+            num_urls: Number of results per channel
+            output_format: "object" or "json"
+            ... (other filter parameters)
+            
+        Returns:
+            SerpEngineOp object or JSON dict
         """
         start_time = time.time()
-
-        # default sources if none provided
-        sources = search_sources or [
-            "google_search_via_api",
-            "google_search_via_request_module"
-        ]
-
+        
+        # Determine which channels to use
+        sources = self._get_sources(search_sources)
+        
+        # Prepare validation conditions
         validation_conditions = {
             "regex_validation_enabled": regex_based_link_validation,
-            "allow_file_links":        allow_links_forwarding_to_files,
-            "keyword_match_list":      keyword_match_based_link_validation
+            "allow_file_links": allow_links_forwarding_to_files,
+            "keyword_match_list": keyword_match_based_link_validation
         }
-
-        # 1️⃣ run each source (synchronous path)
+        
+        # Run searches
         method_ops = self._run_search_methods(
             query, num_urls, sources,
             allowed_countries, forbidden_countries,
-            allowed_domains,  forbidden_domains,
+            allowed_domains, forbidden_domains,
             validation_conditions,
             boolean_llm_filter_semantic
         )
-
-        # 2️⃣ aggregate results into a top-level operation
+        
+        # Aggregate results
         top_op = self._aggregate(method_ops, start_time)
-
-        # 3️⃣ format according to output_format ('json' or 'object')
+        
+        # Format output
         return self._format(top_op, output_format)
-
     
     async def collect_async(
         self,
@@ -199,35 +140,53 @@ class SERPEngine:
         allowed_domains: List[str]                     = None,
         forbidden_domains: List[str]                   = None,
         boolean_llm_filter_semantic: bool              = False,
-        output_format                                  = "object"
+        output_format: str                             = "object"
     ) -> Union[Dict, SerpEngineOp]:
         """
-        Non-blocking version: runs all requested search sources concurrently.
+        Perform async search across channels concurrently.
         """
         start_time = time.time()
-        sources = search_sources or ["google_search_via_api",
-                                     "google_search_via_request_module"]
-
+        
+        # Determine which channels to use
+        sources = self._get_sources(search_sources)
+        
+        # Prepare validation conditions
         validation_conditions = {
             "regex_validation_enabled": regex_based_link_validation,
-            "allow_file_links":        allow_links_forwarding_to_files,
-            "keyword_match_list":      keyword_match_based_link_validation
+            "allow_file_links": allow_links_forwarding_to_files,
+            "keyword_match_list": keyword_match_based_link_validation
         }
-
-        # 1️⃣ run each source (async)
+        
+        # Run async searches
         method_ops = await self._run_search_methods_async(
             query, num_urls, sources,
             allowed_countries, forbidden_countries,
-            allowed_domains,  forbidden_domains,
+            allowed_domains, forbidden_domains,
             validation_conditions,
             boolean_llm_filter_semantic
         )
-
-        # 2️⃣ aggregate
+        
+        # Aggregate results
         top_op = self._aggregate(method_ops, start_time)
+        
+        # Format output
         return self._format(top_op, output_format)
-
-
+    
+    def _get_sources(self, search_sources: Optional[List[str]]) -> List[str]:
+        """Determine which channels to use for search."""
+        if search_sources is None:
+            return self.available_channels
+        
+        # Filter to only available channels
+        sources = []
+        for src in search_sources:
+            if src in self.available_channels:
+                sources.append(src)
+            else:
+                logger.warning(f"Requested channel '{src}' not available")
+        
+        return sources
+    
     def _run_search_methods(
         self,
         query: str,
@@ -240,53 +199,36 @@ class SERPEngine:
         validation_conditions: Dict,
         boolean_llm_filter_semantic: bool
     ) -> List[SERPMethodOp]:
-        """
-        Calls each named source (API or scrape), applies filters & optional LLM,
-        returns a list of SERPMethodOp.
-        """
-        ops: List[SERPMethodOp] = []
-
-        for source in sources:
+        """Run search on each channel synchronously."""
+        ops = []
+        
+        for channel_name in sources:
             try:
-                if source == "google_search_via_api":
-                    op = self.searcher.search_with_api(
-                        query=query,
-                        num_results=num_urls,
-                        google_search_api_key=self.google_api_key,
-                        cse_id=self.google_cse_id
-                    )
-                elif source == "google_search_via_request_module":
-                    op = self.searcher.search(query)
-                else:
-                    logger.warning(f"Ignoring unknown source '{source}'")
-                    continue
-
-                # filter hits
-                op.results = self._apply_filters(
-                    results=op.results,
-                    allowed_countries=allowed_countries,
-                    forbidden_countries=forbidden_countries,
-                    allowed_domains=allowed_domains,
-                    forbidden_domains=forbidden_domains,
-                    validation_conditions=validation_conditions
+                # Execute search through channel manager
+                op = self.channel_manager.execute_search(
+                    channel_name, query, num_urls
                 )
-
-                # optional semantic LLM filter
+                
+                # Apply filters
+                op.results = self._apply_filters(
+                    op.results,
+                    allowed_countries, forbidden_countries,
+                    allowed_domains, forbidden_domains,
+                    validation_conditions
+                )
+                
+                # Optional LLM filter
                 if boolean_llm_filter_semantic:
                     op.results = self._filter_with_llm(op.results)
-
+                
                 ops.append(op)
-
+                logger.info(f"Channel '{channel_name}' returned {len(op.results)} results")
+                
             except Exception as e:
-                logger.exception(f"Error running '{source}': {e}")
-
+                logger.exception(f"Error running channel '{channel_name}': {e}")
+        
         return ops
     
-
-    
-    # ------------------------------------------------------------------ #
-    #  ❸  NEW async runner                                               #
-    # ------------------------------------------------------------------ #
     async def _run_search_methods_async(
         self,
         query: str,
@@ -299,94 +241,40 @@ class SERPEngine:
         validation_conditions: Dict,
         boolean_llm_filter_semantic: bool
     ) -> List[SERPMethodOp]:
-        """
-        Launches all requested search sources concurrently via asyncio.gather().
-        """
-        async_tasks = []
-
-        for source in sources:
-            if source == "google_search_via_api":
-                async_tasks.append(
-                    self.searcher.async_search_with_api(
-                        query, num_urls,
-                        google_search_api_key=self.google_api_key,
-                        cse_id=self.google_cse_id
-                    )
-                )
-            elif source == "google_search_via_request_module":
-                async_tasks.append(self.searcher.async_search(query))
-            else:
-                logger.warning(f"Ignoring unknown source '{source}'")
-
-        # run them concurrently
-        raw_ops: List[SERPMethodOp] = await asyncio.gather(*async_tasks, return_exceptions=True)
-
-        # post-process (filters, LLM) just like sync path
-        processed_ops: List[SERPMethodOp] = []
-        for op in raw_ops:
-            if isinstance(op, Exception):
-                logger.exception("Async search method raised", exc_info=op)
-                continue
-
-            op.results = self._apply_filters(
-                results=op.results,
-                allowed_countries=allowed_countries,
-                forbidden_countries=forbidden_countries,
-                allowed_domains=allowed_domains,
-                forbidden_domains=forbidden_domains,
-                validation_conditions=validation_conditions
+        """Run search on each channel asynchronously."""
+        # Create async tasks
+        tasks = []
+        for channel_name in sources:
+            task = self.channel_manager.execute_search_async(
+                channel_name, query, num_urls
             )
-
+            tasks.append(task)
+        
+        # Run all tasks concurrently
+        raw_ops = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        processed_ops = []
+        for i, op in enumerate(raw_ops):
+            if isinstance(op, Exception):
+                logger.exception(f"Async search failed", exc_info=op)
+                continue
+            
+            # Apply filters
+            op.results = self._apply_filters(
+                op.results,
+                allowed_countries, forbidden_countries,
+                allowed_domains, forbidden_domains,
+                validation_conditions
+            )
+            
             if boolean_llm_filter_semantic:
                 op.results = self._filter_with_llm(op.results)
-
+            
             processed_ops.append(op)
-
+        
         return processed_ops
     
-
-    
-    @staticmethod
-    def _format(top_op: SerpEngineOp, output_format: str):
-        if output_format == "json":
-            return {
-                "usage":        asdict(top_op.usage),
-                "methods":      [asdict(m) for m in top_op.methods],
-                "results":      [asdict(h) for h in top_op.results],
-                "elapsed_time": top_op.elapsed_time
-            }
-        elif output_format == "object":
-            return top_op
-        else:
-            raise ValueError("output_format must be 'json' or 'object'")
-
-    def _aggregate(
-        self,
-        method_ops: List[SERPMethodOp],
-        start_time: float
-    ) -> SerpEngineOp:
-        """
-        Combines multiple SERPMethodOp into one SerpEngineOp,
-        summing costs and concatenating all hits.
-        """
-        all_hits = []
-        total_cost = 0.0
-
-        for m in method_ops:
-            all_hits.extend(m.results)
-            total_cost += m.usage.cost
-
-        elapsed = time.time() - start_time
-        top_op = SerpEngineOp(
-            usage=UsageInfo(cost=total_cost),
-            methods=method_ops,
-            results=all_hits,
-            elapsed_time=elapsed
-        )
-        return top_op
-
-    # ─── Filtering Helpers ──────────────────────────────────────────────────────
-
     def _apply_filters(
         self,
         results: List[SearchHit],
@@ -396,37 +284,51 @@ class SERPEngine:
         forbidden_domains: List[str],
         validation_conditions: Dict
     ) -> List[SearchHit]:
-        out = []
+        """Apply various filters to search results."""
+        filtered = []
+        
         for hit in results:
             link = hit.link
-
+            
+            # Domain filters
             if allowed_domains and not any(d in link.lower() for d in allowed_domains):
                 continue
             if forbidden_domains and any(d in link.lower() for d in forbidden_domains):
                 continue
-
+            
+            # Regex validation
             if validation_conditions.get("regex_validation_enabled"):
                 pattern = r"^https?://([\w-]+\.)+[\w-]+(/[\w\-./?%&=]*)?$"
                 if not re.match(pattern, link):
                     continue
-
+            
+            # File type filter
             if not validation_conditions.get("allow_file_links", True):
-                if any(link.lower().endswith(ext)
-                       for ext in (".pdf", ".doc", ".xls", ".zip", ".ppt")):
+                file_extensions = (".pdf", ".doc", ".xls", ".zip", ".ppt")
+                if any(link.lower().endswith(ext) for ext in file_extensions):
                     continue
-
-            kws = validation_conditions.get("keyword_match_list") or []
-            if kws:
+            
+            # Keyword matching
+            keywords = validation_conditions.get("keyword_match_list") or []
+            if keywords:
                 combined = f"{hit.link} {hit.title} {hit.metadata}".lower()
-                if not any(kw.lower() in combined for kw in kws):
+                if not any(kw.lower() in combined for kw in keywords):
                     continue
-
-            out.append(hit)
-        return out
-
+            
+            filtered.append(hit)
+        
+        return filtered
+    
     def _filter_with_llm(self, hits: List[SearchHit]) -> List[SearchHit]:
-        svc = MyLLMService()
-        kept = []
+        """Apply LLM-based semantic filtering."""
+        try:
+            from .myllmservice import MyLLMService
+            svc = MyLLMService()
+        except ImportError:
+            logger.warning("LLM service not available, skipping semantic filter")
+            return hits
+        
+        filtered = []
         for hit in hits:
             try:
                 resp = svc.filter_simple(
@@ -434,38 +336,109 @@ class SERPEngine:
                     string_data=f"{hit.title} {hit.metadata}"
                 )
                 if getattr(resp, "success", False):
-                    kept.append(hit)
+                    filtered.append(hit)
             except Exception:
                 logger.exception(f"LLM-filter failed on {hit.link}")
-        return kept
-
+        
+        return filtered
     
+    def _aggregate(
+        self,
+        method_ops: List[SERPMethodOp],
+        start_time: float
+    ) -> SerpEngineOp:
+        """Aggregate multiple method operations into one result."""
+        all_hits = []
+        total_cost = 0.0
+        
+        for op in method_ops:
+            all_hits.extend(op.results)
+            total_cost += op.usage.cost
+        
+        return SerpEngineOp(
+            usage=UsageInfo(cost=total_cost),
+            methods=method_ops,
+            results=all_hits,
+            elapsed_time=time.time() - start_time
+        )
+    
+    @staticmethod
+    def _format(top_op: SerpEngineOp, output_format: str):
+        """Format output as JSON or object."""
+        if output_format == "json":
+            return {
+                "usage": asdict(top_op.usage),
+                "methods": [asdict(m) for m in top_op.methods],
+                "results": [asdict(h) for h in top_op.results],
+                "elapsed_time": top_op.elapsed_time
+            }
+        elif output_format == "object":
+            return top_op
+        else:
+            raise ValueError("output_format must be 'json' or 'object'")
 
+
+def main():
+    """Demo the refactored SERPEngine."""
+    print("=== Refactored SERPEngine Demo ===\n")
+    
+    # 1. Check available channels
+    print("1. Checking available channels...")
+    try:
+        serp = SERPEngine(channels=[])
+        channel_info = serp.list_channels()
+        
+        for name, info in channel_info.items():
+            status = "✓ Ready" if info["initialized"] else f"✗ Missing: {info['missing_env']}"
+            print(f"   {name}: {status}")
+    except ValueError:
+        pass
+    
+    # 2. Initialize with specific channels
+    print("\n2. Initializing with specific channels...")
+    try:
+        serp = SERPEngine(channels=["google_scraper", "serpapi"])
+        print(f"   Initialized: {serp.available_channels}")
+    except ValueError as e:
+        print(f"   Error: {e}")
+    
+    # 3. Run a search
+    if 'serp' in locals() and serp.available_channels:
+        print("\n3. Running search...")
+        
+        result = serp.collect(
+            query="Python web scraping",
+            num_urls=3,
+            output_format="object"
+        )
+        
+        print(f"   Total results: {len(result.results)}")
+        print(f"   Total cost: ${result.usage.cost:.4f}")
+        print(f"   Time: {result.elapsed_time:.2f}s")
+        
+        # Show first result
+        if result.results:
+            hit = result.results[0]
+            print(f"\n   First result:")
+            print(f"   Title: {hit.title}")
+            print(f"   URL: {hit.link}")
+    
+    # 4. Test async search
+    print("\n4. Testing async search...")
+    
+    async def test_async():
+        try:
+            serp = SERPEngine()
+            result = await serp.collect_async(
+                query="machine learning",
+                num_urls=5
+            )
+            print(f"   Async search: {len(result.results)} results in {result.elapsed_time:.2f}s")
+        except Exception as e:
+            print(f"   Error: {e}")
+    
+    asyncio.run(test_async())
 
 
 if __name__ == "__main__":
-    serp_engine = SERPEngine()
-
-
-    query="FÇ TEKSTİL SANAYİ VE DIŞ TİCARET ANONİM ŞİRKETİ"
-    # query= "best food in USA"
-    # query="3850763999"
-
-    
-    serp_engine_op = serp_engine.collect(
-        query=query,
-        num_urls=5,
-        search_sources=["google_search_via_api"],
-        regex_based_link_validation=False,             
-        allow_links_forwarding_to_files=False,        
-        output_format="object"  # or "json"
-    )
-    print(serp_engine_op)
-
-    print(serp_engine_op.all_links())
-    # for l in result_data:
-    #     print(l)results
-
-
-
-    # print(result_data.all_links())
+    main()
