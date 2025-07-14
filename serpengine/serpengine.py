@@ -205,6 +205,7 @@ class SERPEngine:
         for channel_name in sources:
             try:
                 # Execute search through channel manager
+                # Channel will handle ranking automatically
                 op = self.channel_manager.execute_search(
                     channel_name, query, num_of_links_per_channel
                 )
@@ -379,25 +380,15 @@ class SERPEngine:
 
 
 def main():
-    """Demo the refactored SERPEngine."""
-    print("=== Refactored SERPEngine Demo ===\n")
+    """Demo the SERPEngine with base channel system."""
+    print("=== SERPEngine Demo ===\n")
     
-    # 1. Check available channels
-    print("1. Checking available channels...")
-    try:
-        serp = SERPEngine(channels=[])
-        channel_info = serp.list_channels()
-        
-        for name, info in channel_info.items():
-            status = "✓ Ready" if info["initialized"] else f"✗ Missing: {info['missing_env']}"
-            print(f"   {name}: {status}")
-    except ValueError:
-        pass
+  
     
-    # 2. Initialize with specific channels
-    print("\n2. Initializing with specific channels...")
+   
+    print("\n1. Initializing with specific channels...")
     try:
-        serp = SERPEngine(channels=["google_scraper", "serpapi"])
+        serp = SERPEngine(channels=["google_api", "serpapi"])
         print(f"   Initialized: {serp.available_channels}")
     except ValueError as e:
         print(f"   Error: {e}")
@@ -419,23 +410,48 @@ def main():
         # Show channel breakdown
         print("\n   Channel breakdown:")
         for channel in result.channels:
-            print(f"   {channel.name}: {len(channel.results)} results")
+            print(f"   {channel.name}: {len(channel.results)} results, "
+                  f"${channel.usage.cost:.4f}, {channel.elapsed_time:.2f}s")
         
-        # Show first result
+        # Show first few results
         if result.results:
-            hit = result.results[0]
-            print(f"\n   First result:")
-            print(f"   Title: {hit.title}")
-            print(f"   URL: {hit.link}")
-            print(f"   Channel: {hit.channel_name} (rank #{hit.channel_rank})")
+            print("\n   Sample results:")
+            for i, hit in enumerate(result.results[:5]):
+                print(f"\n   {i+1}. {hit.title}")
+                print(f"      URL: {hit.link}")
+                print(f"      Channel: {hit.channel_name} (rank #{hit.channel_rank})")
+                if hit.metadata:
+                    print(f"      Metadata: {hit.metadata[:100]}...")
         
         # Show results by channel
         print("\n   Results by channel:")
         for channel, hits in result.results_by_channel().items():
             print(f"   {channel}: {len(hits)} results")
+            if hits:
+                print(f"      Top result: {hits[0].title}")
     
-    # 4. Test async search
-    print("\n4. Testing async search...")
+    # 4. Test filters
+    print("\n\n4. Testing with filters...")
+    if 'serp' in locals() and serp.available_channels:
+        filtered_result = serp.collect(
+            query="Python tutorial",
+            num_of_links_per_channel=10,
+            allowed_domains=["python.org", "github.com"],
+            regex_based_link_validation=True,
+            allow_links_forwarding_to_files=False
+        )
+        
+        print(f"   Filtered results: {len(filtered_result.results)}")
+        print("   Domains found:")
+        domains = set()
+        for hit in filtered_result.results:
+            domain = hit.link.split('/')[2] if '/' in hit.link else hit.link
+            domains.add(domain)
+        for domain in domains:
+            print(f"      - {domain}")
+    
+    # 5. Test async search
+    print("\n5. Testing async search...")
     
     async def test_async():
         try:
@@ -445,10 +461,29 @@ def main():
                 num_of_links_per_channel=5
             )
             print(f"   Async search: {len(result.results)} results in {result.elapsed_time:.2f}s")
+            
+            # Show concurrent channel execution
+            print("   Channels executed concurrently:")
+            for channel in result.channels:
+                print(f"      {channel.name}: {channel.elapsed_time:.2f}s")
+                
         except Exception as e:
             print(f"   Error: {e}")
     
     asyncio.run(test_async())
+    
+    # 6. Test JSON output format
+    print("\n6. Testing JSON output format...")
+    if 'serp' in locals() and serp.available_channels:
+        json_result = serp.collect(
+            query="data science",
+            num_of_links_per_channel=2,
+            output_format="json"
+        )
+        
+        print("   JSON keys:", list(json_result.keys()))
+        print(f"   Total results in JSON: {len(json_result['results'])}")
+        print(f"   Channels in JSON: {[c['name'] for c in json_result['channels']]}")
 
 
 if __name__ == "__main__":

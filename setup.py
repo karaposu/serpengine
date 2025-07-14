@@ -6,7 +6,7 @@ import os
 
 setup(
     name='serpengine',  # Package name
-    version='0.0.9',  # Version of your package
+    version='0.1.0',  # Version of your package
     author='Enes Kuzucu',  # Your name
     
     description='A module to find links through various search engines',  # Short description

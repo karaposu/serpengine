@@ -19,12 +19,7 @@ class ChannelRegistry:
             "required_env": ["GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_ID"],
             "description": "Google Custom Search API (paid after 100 queries/day)"
         },
-        # "google_scraper": {
-        #     "module": "serpengine.google_searcher",
-        #     "class": "GoogleSearcher",
-        #     "required_env": [],
-        #     "description": "Google HTML scraper (free but may be blocked)"
-        # },
+      
         "serpapi": {
             "module": "serpengine.serpapi_searcher",
             "class": "SerpApiSearcher",
@@ -131,34 +126,37 @@ class ChannelManager:
     
     def _get_init_kwargs(self, channel_name: str) -> Dict[str, Any]:
         """Get initialization kwargs for a specific channel."""
-        init_kwargs = {}
+        
+
+
+        credentials = {}
         
         if channel_name == "google_api":
-            init_kwargs["api_key"] = (
+            credentials["GOOGLE_SEARCH_API_KEY"] = (
                 self.credentials.get("GOOGLE_SEARCH_API_KEY") or 
                 os.getenv("GOOGLE_SEARCH_API_KEY")
             )
-            init_kwargs["cse_id"] = (
+            credentials["GOOGLE_CSE_ID"] = (
                 self.credentials.get("GOOGLE_CSE_ID") or 
                 os.getenv("GOOGLE_CSE_ID")
             )
         elif channel_name == "serpapi":
-            init_kwargs["api_key"] = (
+            credentials["SERPAPI_API_KEY"] = (
                 self.credentials.get("SERPAPI_API_KEY") or 
                 os.getenv("SERPAPI_API_KEY")
             )
         elif channel_name == "dataforseo":
-            init_kwargs["username"] = (
+            credentials["DATAFORSEO_USERNAME"] = (
                 self.credentials.get("DATAFORSEO_USERNAME") or 
                 os.getenv("DATAFORSEO_USERNAME")
             )
-            init_kwargs["password"] = (
+            credentials["DATAFORSEO_PASSWORD"] = (
                 self.credentials.get("DATAFORSEO_PASSWORD") or 
                 os.getenv("DATAFORSEO_PASSWORD")
             )
-        # google_scraper doesn't need credentials
+       
         
-        return init_kwargs
+        return {"credentials": credentials} if credentials else {}
     
     def get_searcher(self, channel_name: str):
         """Get a searcher instance by channel name."""
@@ -188,17 +186,17 @@ class ChannelManager:
         
         return result
     
-    def execute_search(self, channel_name: str, query: str, num_results: int):
+    def execute_search(self, channel_name: str, query: str, num_of_links_per_channel: int):
         """
         Execute search on a specific channel.
         
         Args:
             channel_name: Name of the channel to use
             query: Search query
-            num_results: Number of results to fetch
+            num_of_links_per_channel: Number of results to fetch per channel
             
         Returns:
-            SerpChannelOp with results
+            SerpChannelOp with results including channel info
         """
         searcher = self.searchers.get(channel_name)
         if not searcher:
@@ -206,27 +204,37 @@ class ChannelManager:
         
         # Call the appropriate search method based on channel
         if channel_name == "google_api":
-            return searcher.search(query=query, num_results=num_results)
-        elif channel_name == "google_scraper":
-            return searcher.search(query=query, num_results=num_results)
+            op = searcher.search(query=query, num_results=num_of_links_per_channel)
+        
         elif channel_name == "serpapi":
-            return searcher.search(query=query, num_results=num_results)
+            op = searcher.search(query=query, num_results=num_of_links_per_channel)
         elif channel_name == "dataforseo":
-            return searcher.search_live(query=query, num_results=num_results)
+            op = searcher.search_live(query=query, num_results=num_of_links_per_channel)
         else:
             raise ValueError(f"No search method defined for '{channel_name}'")
+        
+        # Note: If using BaseSearchChannel, ranking is handled automatically
+        # For legacy channels, we need to add ranking manually
+        if not hasattr(searcher, 'create_channel_op'):
+            # Legacy channel - add ranking manually
+            logger.debug(f"Channel '{channel_name}' is legacy, adding ranking manually")
+            for rank, hit in enumerate(op.results, 1):
+                hit.channel_rank = rank
+                hit.channel_name = channel_name
+        
+        return op
     
-    async def execute_search_async(self, channel_name: str, query: str, num_results: int):
+    async def execute_search_async(self, channel_name: str, query: str, num_of_links_per_channel: int):
         """
         Execute async search on a specific channel.
         
         Args:
             channel_name: Name of the channel to use
             query: Search query
-            num_results: Number of results to fetch
+            num_of_links_per_channel: Number of results to fetch per channel
             
         Returns:
-            SerpChannelOp with results
+            SerpChannelOp with results including channel info
         """
         searcher = self.searchers.get(channel_name)
         if not searcher:
@@ -234,12 +242,21 @@ class ChannelManager:
         
         # Call the appropriate async search method
         if channel_name == "google_api":
-            return await searcher.async_search(query=query, num_results=num_results)
-        elif channel_name == "google_scraper":
-            return await searcher.async_search(query=query, num_results=num_results)
+            op = await searcher.async_search(query=query, num_results=num_of_links_per_channel)
         elif channel_name == "serpapi":
-            return await searcher.async_search(query=query, num_results=num_results)
+            op = await searcher.async_search(query=query, num_results=num_of_links_per_channel)
         elif channel_name == "dataforseo":
-            return await searcher.async_search_live(query=query, num_results=num_results)
+            op = await searcher.async_search_live(query=query, num_results=num_of_links_per_channel)
         else:
             raise ValueError(f"No async search method defined for '{channel_name}'")
+        
+        # Note: If using BaseSearchChannel, ranking is handled automatically
+        # For legacy channels, we need to add ranking manually
+        if not hasattr(searcher, 'create_channel_op'):
+            # Legacy channel - add ranking manually
+            logger.debug(f"Channel '{channel_name}' is legacy, adding ranking manually")
+            for rank, hit in enumerate(op.results, 1):
+                hit.channel_rank = rank
+                hit.channel_name = channel_name
+        
+        return op
