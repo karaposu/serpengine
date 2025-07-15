@@ -86,7 +86,6 @@ class SERPEngine:
         forbidden_domains: List[str]                   = None,
         boolean_llm_filter_semantic: bool              = False,
         activate_interleaving: bool                    = False,
-        deduplicate_links: bool                        = False,
         output_format: str                             = "object"
     ) -> Union[Dict, SerpEngineOp]:
         """
@@ -106,8 +105,6 @@ class SERPEngine:
             boolean_llm_filter_semantic: Apply LLM-based semantic filtering
             activate_interleaving: If True, interleave results from different channels
                                   for diversity. If False, results are concatenated.
-            deduplicate_links: If True, remove duplicate URLs keeping only first occurrence.
-                             URLs are normalized for comparison (case-insensitive, trailing slash removed).
             output_format: "object" or "json"
             
         Returns:
@@ -137,10 +134,6 @@ class SERPEngine:
         # Aggregate results with interleaving option
         top_op = self._aggregate(channel_ops, start_time, activate_interleaving)
         
-        # Apply deduplication if requested
-        if deduplicate_links:
-            top_op.results = self._deduplicate_results(top_op.results)
-        
         # Format output
         return self._format(top_op, output_format)
     
@@ -158,7 +151,6 @@ class SERPEngine:
         forbidden_domains: List[str]                   = None,
         boolean_llm_filter_semantic: bool              = False,
         activate_interleaving: bool                    = False,
-        deduplicate_links: bool                        = False,
         output_format: str                             = "object"
     ) -> Union[Dict, SerpEngineOp]:
         """
@@ -193,10 +185,6 @@ class SERPEngine:
         
         # Aggregate results with interleaving option
         top_op = self._aggregate(channel_ops, start_time, activate_interleaving)
-        
-        # Apply deduplication if requested
-        if deduplicate_links:
-            top_op.results = self._deduplicate_results(top_op.results)
         
         # Format output
         return self._format(top_op, output_format)
@@ -437,67 +425,6 @@ class SERPEngine:
         
         return interleaved
     
-    def _deduplicate_results(self, results: List[SearchHit]) -> List[SearchHit]:
-        """
-        Remove duplicate URLs from results, keeping only the first occurrence.
-        
-        Args:
-            results: List of SearchHit objects
-            
-        Returns:
-            List of deduplicated SearchHit objects
-        """
-        seen_urls = set()
-        deduplicated = []
-        
-        for hit in results:
-            # Normalize URL for comparison
-            normalized_url = self._normalize_url(hit.link)
-            
-            if normalized_url not in seen_urls:
-                seen_urls.add(normalized_url)
-                deduplicated.append(hit)
-            else:
-                logger.debug(f"Duplicate URL removed: {hit.link} from {hit.channel_name}")
-        
-        if len(results) != len(deduplicated):
-            logger.info(
-                f"Deduplication: {len(results)} results → {len(deduplicated)} unique URLs "
-                f"({len(results) - len(deduplicated)} duplicates removed)"
-            )
-        
-        return deduplicated
-    
-    def _normalize_url(self, url: str) -> str:
-        """
-        Normalize URL for deduplication comparison.
-        
-        Args:
-            url: URL to normalize
-            
-        Returns:
-            Normalized URL string
-        """
-        # Convert to lowercase
-        normalized = url.lower()
-        
-        # Remove trailing slash
-        normalized = normalized.rstrip('/')
-        
-        # Remove common tracking parameters (optional, but useful)
-        # This helps identify true duplicates vs same page with different tracking
-        tracking_params = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term']
-        for param in tracking_params:
-            normalized = re.sub(f'[?&]{param}=[^&]*', '', normalized)
-        
-        # Remove fragment identifier
-        normalized = normalized.split('#')[0]
-        
-        # Clean up any double slashes (except after protocol)
-        normalized = re.sub(r'(?<!:)//+', '/', normalized)
-        
-        return normalized
-    
     @staticmethod
     def _format(top_op: SerpEngineOp, output_format: str):
         """Format output as JSON or object."""
@@ -525,9 +452,9 @@ def main():
     except ValueError as e:
         print(f"   Error: {e}")
     
-    # 2. Test basic search
+    # 3. Run a search without interleaving
     if 'serp' in locals() and serp.available_channels:
-        print("\n2. Basic search (no special features)...")
+        print("\n3. Running search (without interleaving)...")
         
         result = serp.collect(
             query="Python web scraping",
@@ -538,103 +465,100 @@ def main():
         print(f"   Total results: {len(result.results)}")
         print(f"   Total cost: ${result.usage.cost:.4f}")
         print(f"   Time: {result.elapsed_time:.2f}s")
-    
-    # 3. Test with deduplication
-    if 'serp' in locals() and serp.available_channels:
-        print("\n3. Search WITH deduplication...")
         
-        dedup_result = serp.collect(
+        # Show channel breakdown
+        print("\n   Channel breakdown:")
+        for channel in result.channels:
+            print(f"   {channel.name}: {len(channel.results)} results, "
+                  f"${channel.usage.cost:.4f}, {channel.elapsed_time:.2f}s")
+        
+        # Show first few results
+        if result.results:
+            print("\n   Sample results (concatenated):")
+            for i, hit in enumerate(result.results[:6]):
+                print(f"\n   {i+1}. {hit.title}")
+                print(f"      URL: {hit.link}")
+                print(f"      Channel: {hit.channel_name} (rank #{hit.channel_rank})")
+    
+    # 4. Run a search WITH interleaving
+    if 'serp' in locals() and serp.available_channels:
+        print("\n\n4. Running search WITH interleaving...")
+        
+        interleaved_result = serp.collect(
             query="Python tutorial",
-            num_of_links_per_channel=5,
-            deduplicate_links=True
+            num_of_links_per_channel=3,
+            activate_interleaving=True,  # Enable interleaving
+            output_format="object"
         )
         
-        print(f"   Results after deduplication: {len(dedup_result.results)}")
+        print(f"   Total results: {len(interleaved_result.results)}")
         
-        # Show unique domains
-        domains = set()
-        for hit in dedup_result.results:
-            domain = hit.link.split('/')[2] if '/' in hit.link else hit.link
-            domains.add(domain)
-        print(f"   Unique domains: {len(domains)}")
+        # Show interleaved pattern
+        if interleaved_result.results:
+            print("\n   Interleaved results pattern:")
+            for i, hit in enumerate(interleaved_result.results[:6]):
+                print(f"   {i+1}. Channel: {hit.channel_name} - {hit.title[:50]}...")
     
-    # 4. Test interleaving + deduplication
-    if 'serp' in locals() and serp.available_channels:
-        print("\n4. Search with BOTH interleaving AND deduplication...")
-        
-        combined_result = serp.collect(
-            query="machine learning",
-            num_of_links_per_channel=5,
-            activate_interleaving=True,
-            deduplicate_links=True
-        )
-        
-        print(f"   Final results: {len(combined_result.results)}")
-        
-        # Show pattern
-        print("   Result pattern (first 6):")
-        for i, hit in enumerate(combined_result.results[:6]):
-            print(f"      {i+1}. {hit.channel_name}: {hit.link[:50]}...")
-    
-    # 5. Test with filters + deduplication
-    print("\n5. Testing filters with deduplication...")
+    # 5. Test filters with interleaving
+    print("\n\n5. Testing filters with interleaving...")
     if 'serp' in locals() and serp.available_channels:
         filtered_result = serp.collect(
             query="Python tutorial",
             num_of_links_per_channel=10,
-            allowed_domains=["python.org", "github.com", "realpython.com"],
-            deduplicate_links=True,
-            allow_links_forwarding_to_files=False
+            allowed_domains=["python.org", "github.com"],
+            regex_based_link_validation=True,
+            allow_links_forwarding_to_files=False,
+            activate_interleaving=True
         )
         
-        print(f"   Filtered & deduplicated: {len(filtered_result.results)} results")
+        print(f"   Filtered results: {len(filtered_result.results)}")
+        print("   Result pattern:")
+        for hit in filtered_result.results[:5]:
+            domain = hit.link.split('/')[2] if '/' in hit.link else hit.link
+            print(f"      {hit.channel_name}: {domain}")
     
-    # 6. Test async with all features
-    print("\n6. Testing async search with all features...")
+    # 6. Test async search with interleaving
+    print("\n6. Testing async search with interleaving...")
     
     async def test_async():
         try:
             serp = SERPEngine()
             result = await serp.collect_async(
-                query="data science",
-                num_of_links_per_channel=8,
-                activate_interleaving=True,
-                deduplicate_links=True
+                query="machine learning",
+                num_of_links_per_channel=5,
+                activate_interleaving=True
             )
-            print(f"   Async results: {len(result.results)} unique URLs in {result.elapsed_time:.2f}s")
+            print(f"   Async search: {len(result.results)} results in {result.elapsed_time:.2f}s")
             
-            # Show channel distribution
-            channel_counts = {}
-            for hit in result.results:
-                ch = hit.channel_name
-                channel_counts[ch] = channel_counts.get(ch, 0) + 1
-            print(f"   Channel distribution: {channel_counts}")
+            # Show interleaving from concurrent execution
+            print("   First 5 results (interleaved):")
+            for i, hit in enumerate(result.results[:5]):
+                print(f"      {i+1}. {hit.channel_name}: {hit.title[:40]}...")
                 
         except Exception as e:
             print(f"   Error: {e}")
     
     asyncio.run(test_async())
     
-    # 7. Compare with and without deduplication
-    print("\n7. Comparing WITH and WITHOUT deduplication...")
+    # 7. Test JSON output with interleaving
+    print("\n7. Testing JSON output format with interleaving...")
     if 'serp' in locals() and serp.available_channels:
-        # Without deduplication
-        no_dedup = serp.collect(
-            query="Python programming",
-            num_of_links_per_channel=10,
-            deduplicate_links=False
+        json_result = serp.collect(
+            query="data science",
+            num_of_links_per_channel=2,
+            activate_interleaving=True,
+            output_format="json"
         )
         
-        # With deduplication
-        with_dedup = serp.collect(
-            query="Python programming",
-            num_of_links_per_channel=10,
-            deduplicate_links=True
-        )
+        print("   JSON keys:", list(json_result.keys()))
+        print(f"   Total results in JSON: {len(json_result['results'])}")
         
-        print(f"   Without deduplication: {len(no_dedup.results)} results")
-        print(f"   With deduplication: {len(with_dedup.results)} results")
-        print(f"   Duplicates removed: {len(no_dedup.results) - len(with_dedup.results)}")
+        # Show channel distribution in results
+        channel_counts = {}
+        for result in json_result['results']:
+            ch = result['channel_name']
+            channel_counts[ch] = channel_counts.get(ch, 0) + 1
+        print(f"   Channel distribution: {channel_counts}")
 
 
 if __name__ == "__main__":

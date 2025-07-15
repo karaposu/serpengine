@@ -10,7 +10,7 @@ from typing import List, Optional, Dict, Any
 from base64 import b64encode
 from dotenv import load_dotenv
 
-from .schemes import SearchHit, UsageInfo, SerpChannelOp
+from .schemas import SearchHit, UsageInfo, SerpChannelOp
 
 load_dotenv()
 logger = logging.getLogger(__name__)

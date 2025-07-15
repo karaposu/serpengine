@@ -10,7 +10,7 @@ import httpx
 from typing import List, Dict, Any
 
 from .base_channel import BaseSearchChannel
-from .schemes import SearchHit, SerpChannelOp
+from .schemas import SearchHit, SerpChannelOp
 
 logger = logging.getLogger(__name__)
 

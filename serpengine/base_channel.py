@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Any
 from dotenv import load_dotenv
 
-from .schemes import SearchHit, UsageInfo, SerpChannelOp
+from .schemas import SearchHit, UsageInfo, SerpChannelOp
 
 load_dotenv()
 logger = logging.getLogger(__name__)

@@ -14,7 +14,7 @@ except ImportError:
     raise ImportError("Please install serpapi package: pip install google-search-results")
 
 from .base_channel import BaseSearchChannel
-from .schemes import SearchHit, SerpChannelOp
+from .schemas import SearchHit, SerpChannelOp
 
 logger = logging.getLogger(__name__)
 
@@ -540,14 +540,15 @@ def main():
     print(f"Plan: {serpapi_searcher.plan} (${serpapi_searcher.COST_PER_SEARCH:.4f}/search)")
     
     # Test search
-    query = "Python programming"
+    # query = "Python programming"
+    query="BAV99"
     print(f"\nSearching for: {query}")
     print("-" * 80)
     
     result = serpapi_searcher.search(
         query,
         location="United States",
-        num_results=6
+        num_results=15
     )
     
     print(f"\nFound {len(result.results)} results")
