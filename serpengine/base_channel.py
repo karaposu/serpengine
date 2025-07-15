@@ -45,7 +45,7 @@ class BaseSearchChannel(ABC):
         # Initialize channel-specific resources
         self.initialize()
         
-        logger.info(f"[{self.name}] Initialized: {self.DESCRIPTION}")
+        # logger.info(f"[{self.name}] Initialized: {self.DESCRIPTION}")
     
     def load_credentials(self) -> Dict[str, str]:
         """

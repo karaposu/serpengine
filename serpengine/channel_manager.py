@@ -17,7 +17,7 @@ class ChannelRegistry:
             "module": "serpengine.google_search_api",
             "class": "GoogleSearchAPI",
             "required_env": ["GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_ID"],
-            "description": "Google Custom Search API (paid after 100 queries/day)"
+            "description": "Google Custom Search API"
         },
       
         "serpapi": {
@@ -67,7 +67,7 @@ class ChannelManager:
         # If no channels specified, try all
         if channels is None:
             channels = list(ChannelRegistry.CHANNELS.keys())
-            logger.info("No channels specified, attempting to initialize all available channels")
+            # logger.info("No channels specified, attempting to initialize all available channels")
         
         # Initialize each channel
         for channel in channels:
@@ -117,7 +117,7 @@ class ChannelManager:
             
             # Create instance
             self.searchers[channel_name] = searcher_class(**init_kwargs)
-            logger.info(f"Initialized channel '{channel_name}': {channel_info['description']}")
+            # logger.info(f"Initialized channel '{channel_name}': {channel_info['description']}")
             return True
             
         except Exception as e:

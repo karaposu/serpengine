@@ -24,18 +24,20 @@ class GoogleSearchAPI(BaseSearchChannel):
     # Channel metadata
     CHANNEL_NAME = "google_api"
     REQUIRED_ENV_VARS = ["GOOGLE_SEARCH_API_KEY", "GOOGLE_CSE_ID"]
-    DESCRIPTION = "Google Custom Search API (paid after 100 queries/day)"
+    DESCRIPTION = "Google Custom Search API"
     
-    # Pricing
-    FREE_SEARCHES_PER_DAY = 100
-    COST_PER_SEARCH = 0.005  # $5 per 1000 queries after free tier
+    # Pricing - simplified, no free tier logic
+    COST_PER_SEARCH = 0.005  # $5 per 1000 queries
     
     def initialize(self):
         """Initialize Google API specific resources."""
         self.api_key = self.get_credential("GOOGLE_SEARCH_API_KEY")
         self.cse_id = self.get_credential("GOOGLE_CSE_ID")
         self.base_url = "https://www.googleapis.com/customsearch/v1"
-        self.daily_query_count = 0
+    
+    def calculate_cost(self, num_searches: int = 1) -> float:
+        """Simple cost calculation - every search costs money."""
+        return num_searches * self.COST_PER_SEARCH
     
     def search(
         self,
@@ -62,8 +64,6 @@ class GoogleSearchAPI(BaseSearchChannel):
         # Google CSE API returns max 10 results per call
         results_per_page = 10
         start_index = 1
-        
-        #logger.debug(f"[{self.name}] Searching for: '{query}'")
         
         while len(all_items) < num_results:
             # Prepare parameters
@@ -122,12 +122,10 @@ class GoogleSearchAPI(BaseSearchChannel):
                 )
                 hits.append(hit)
         
-        # Update daily counter and calculate cost
-        self.daily_query_count += total_api_calls
-        cost = self.calculate_cost(self.daily_query_count) - self.calculate_cost(self.daily_query_count - total_api_calls)
+        # Simple cost calculation
+        cost = self.calculate_cost(total_api_calls)
         
         elapsed = time.time() - start_time
-       # logger.info(f"[{self.name}] Found {len(hits)} results in {elapsed:.2f}s (cost: ${cost:.4f})")
         
         return self.create_channel_op(hits, elapsed, cost)
     
@@ -197,8 +195,8 @@ class GoogleSearchAPI(BaseSearchChannel):
                     metadata=self._extract_metadata(item)
                 ))
         
-        self.daily_query_count += total_api_calls
-        cost = self.calculate_cost(self.daily_query_count) - self.calculate_cost(self.daily_query_count - total_api_calls)
+        # Simple cost calculation
+        cost = self.calculate_cost(total_api_calls)
         elapsed = time.time() - start_time
         
         return self.create_channel_op(hits, elapsed, cost)
@@ -244,11 +242,6 @@ class GoogleSearchAPI(BaseSearchChannel):
         """Search within a specific site."""
         kwargs['siteSearch'] = site
         return self.search(query, num_results, **kwargs)
-    
-    def reset_daily_counter(self):
-        """Reset the daily query counter (call at start of new day)."""
-        self.daily_query_count = 0
-        logger.info(f"[{self.name}] Daily query counter reset")
 
 
 async def _async_demo():
@@ -274,9 +267,6 @@ def main():
     
     print("=== Google Custom Search API Demo ===")
     
-    
-   
-
     # Initialize API
     api = GoogleSearchAPI()
     
@@ -285,32 +275,15 @@ def main():
     result = api.search("Python machine learning", num_results=5)
     
     print(f"Found {len(result.results)} results")
-    print(f"{result.results}")
     print(f"Cost: ${result.usage.cost:.4f}")
     print(f"Time: {result.elapsed_time:.2f}s")
+    print(f"API calls made: {result.usage.requests_made}")
     
-    # for i, hit in enumerate(result.results):
-    #     print(f"\n{i+1}. {hit.title}")
-    #     print(f"   URL: {hit.link}")
-    #     if hit.metadata:
-    #         print(f"   Metadata: {hit.metadata[:100]}...")
-    
-    # # Site-specific search
-    # print("\n\n2. Site-Specific Search (Wikipedia):")
-    # wiki_result = api.search_site("artificial intelligence", "wikipedia.org", num_results=3)
-    
-    # for i, hit in enumerate(wiki_result.results):
-    #     print(f"\n{i+1}. {hit.title}")
-    #     print(f"   URL: {hit.link}")
-    
-    # # Image search
-    # print("\n\n3. Image Search:")
-    # image_result = api.search_images("cute puppies", num_results=3)
-    # print(f"Found {len(image_result.results)} image results")
-    
-    # # Run async demo
-    # print("\n\n4. Running async demo...")
-    # asyncio.run(_async_demo())
+    for i, hit in enumerate(result.results):
+        print(f"\n{i+1}. {hit.title}")
+        print(f"   URL: {hit.link}")
+        if hit.metadata:
+            print(f"   Metadata: {hit.metadata[:100]}...")
 
 
 if __name__ == "__main__":
