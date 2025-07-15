@@ -58,7 +58,7 @@ class SERPEngine:
                 "Please check your credentials and channel configuration."
             )
         
-        logger.info(f"Successfully initialized channels: {self.available_channels}")
+        logger.debug(f"Successfully initialized channels: {self.available_channels}")
     
     def list_channels(self) -> Dict[str, Dict]:
         """List all available channels and their status."""
@@ -252,7 +252,7 @@ class SERPEngine:
                     op.results = self._filter_with_llm(op.results)
                 
                 ops.append(op)
-                logger.info(f"Channel '{channel_name}' returned {len(op.results)} results")
+                logger.debug(f"Channel '{channel_name}' returned {len(op.results)} results")
                 
             except Exception as e:
                 logger.exception(f"Error running channel '{channel_name}': {e}")
@@ -430,10 +430,10 @@ class SERPEngine:
             for channel in exhausted_channels:
                 del channel_iterators[channel]
         
-        logger.info(
-            f"Interleaved {len(interleaved)} results from "
-            f"{len(channel_ops)} channels"
-        )
+        # logger.debug(
+        #     f"Interleaved {len(interleaved)} results from "
+        #     f"{len(channel_ops)} channels"
+        # )
         
         return interleaved
     
@@ -461,7 +461,7 @@ class SERPEngine:
                 logger.debug(f"Duplicate URL removed: {hit.link} from {hit.channel_name}")
         
         if len(results) != len(deduplicated):
-            logger.info(
+            logger.debug(
                 f"Deduplication: {len(results)} results → {len(deduplicated)} unique URLs "
                 f"({len(results) - len(deduplicated)} duplicates removed)"
             )
