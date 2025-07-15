@@ -458,9 +458,11 @@ class SERPEngine:
                 seen_urls.add(normalized_url)
                 deduplicated.append(hit)
             else:
+                
                 logger.debug(f"Duplicate URL removed: {hit.link} from {hit.channel_name}")
         
         if len(results) != len(deduplicated):
+            
             logger.debug(
                 f"Deduplication: {len(results)} results → {len(deduplicated)} unique URLs "
                 f"({len(results) - len(deduplicated)} duplicates removed)"
