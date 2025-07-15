@@ -44,6 +44,13 @@ class SerpChannelOp:
     elapsed_time: float
     error: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
+
+
+
+    @property
+    def all_links(self) -> List[str]:
+        """Get all URLs from this channel's results."""
+        return [hit.link for hit in self.results]
     
     @property
     def success(self) -> bool:
@@ -78,6 +85,12 @@ class SerpEngineOp:
                 by_channel[hit.channel_name] = []
             by_channel[hit.channel_name].append(hit)
         return by_channel
+    
+
+    @property
+    def all_links(self) -> List[str]:
+        """Get all URLs from results."""
+        return [hit.link for hit in self.results]
     
     @property
     def total_results(self) -> int:
