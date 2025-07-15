@@ -58,7 +58,7 @@ class SERPEngine:
                 "Please check your credentials and channel configuration."
             )
         
-        logger.debug(f"Successfully initialized channels: {self.available_channels}")
+        # logger.debug(f"Successfully initialized channels: {self.available_channels}")
     
     def list_channels(self) -> Dict[str, Dict]:
         """List all available channels and their status."""
@@ -252,7 +252,7 @@ class SERPEngine:
                     op.results = self._filter_with_llm(op.results)
                 
                 ops.append(op)
-                logger.debug(f"Channel '{channel_name}' returned {len(op.results)} results")
+                # logger.debug(f"Channel '{channel_name}' returned {len(op.results)} results")
                 
             except Exception as e:
                 logger.exception(f"Error running channel '{channel_name}': {e}")

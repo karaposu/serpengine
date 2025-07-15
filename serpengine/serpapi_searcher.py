@@ -503,7 +503,7 @@ class SerpApiSearcher(BaseSearchChannel):
         elapsed = time.time() - start_time
         cost = self.calculate_cost(total_api_calls)
         
-        logger.info(f"[{self.name} Pagination] Returning {len(all_hits)} hits in {elapsed:.2f}s")
+        # logger.info(f"[{self.name} Pagination] Returning {len(all_hits)} hits in {elapsed:.2f}s")
         
         return self.create_channel_op(all_hits[:total_results], elapsed, cost)
 
